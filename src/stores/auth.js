@@ -79,27 +79,48 @@ export const useAuthStore = defineStore('auth', () => {
   // Handle callback from Spotify
   async function handleCallback(code) {
     const codeVerifier = window.localStorage.getItem('code_verifier')
+    
+    console.log('🔐 Handling callback...')
+    console.log('Code exists:', !!code)
+    console.log('Code verifier exists:', !!codeVerifier)
+    console.log('Client ID:', clientId)
+    console.log('Redirect URI:', redirectUri)
+
+    if (!codeVerifier) {
+      console.error('❌ No code verifier found in localStorage')
+      return false
+    }
 
     try {
+      const body = new URLSearchParams({
+        client_id: clientId,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
+      
+      console.log('📤 Sending token request with body:', Object.fromEntries(body))
+
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          client_id: clientId,
-          grant_type: 'authorization_code',
-          code: code,
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier,
-        }),
+        body: body,
       })
 
+      console.log('📥 Token response status:', response.status)
+
       if (!response.ok) {
-        throw new Error('Failed to exchange code for token')
+        const errorData = await response.json()
+        console.error('❌ Token exchange failed:', errorData)
+        throw new Error(`Token exchange failed: ${errorData.error} - ${errorData.error_description}`)
       }
 
       const data = await response.json()
+      console.log('✅ Token received successfully')
+      
       setTokens(data)
       window.localStorage.removeItem('code_verifier')
       
@@ -108,7 +129,8 @@ export const useAuthStore = defineStore('auth', () => {
       
       return true
     } catch (error) {
-      console.error('Error in handleCallback:', error)
+      console.error('❌ Error in handleCallback:', error)
+      console.error('Error details:', error.message)
       return false
     }
   }
