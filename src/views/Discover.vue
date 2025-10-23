@@ -2,43 +2,60 @@
   <div class="min-h-screen">
     <!-- Header -->
     <header class="glass-effect border-b border-white border-opacity-10 sticky top-0 z-50">
-      <div class="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <h1 class="text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-500 bg-clip-text text-transparent">
-            Discovery Studio
-          </h1>
-          <span v-if="authStore.user" class="text-gray-400 text-sm">
-            Welcome, {{ authStore.user.display_name }}!
-          </span>
-        </div>
-        
-        <div class="flex items-center gap-4">
-          <button 
-            @click="isAnalyzing ? stopAnalysis() : startAnalysis()" 
-            :class="isAnalyzing ? 'btn-secondary' : 'btn-primary'"
-            class="text-sm"
-          >
-            {{ isAnalyzing ? '⏸ Stop Analysis' : '▶ Analyze My Taste' }}
-          </button>
-          <button @click="handleLogout" class="btn-secondary text-sm">
-            Logout
-          </button>
+      <div class="container mx-auto px-4 py-4">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <div class="flex items-center gap-4">
+            <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-500 bg-clip-text text-transparent">
+              Discovery Studio
+            </h1>
+            <span v-if="authStore.user" class="text-gray-400 text-xs md:text-sm hidden sm:inline">
+              Welcome, {{ authStore.user.display_name }}!
+            </span>
+          </div>
+          
+          <div class="flex items-center gap-2 md:gap-4">
+            <!-- Theme Selector -->
+            <select 
+              v-model="themeStore.currentTheme"
+              class="bg-spotify-gray px-2 md:px-3 py-2 rounded text-xs md:text-sm border border-white border-opacity-20 hover:border-opacity-40 transition-colors"
+            >
+              <option v-for="(theme, key) in themeStore.themes" :key="key" :value="key">
+                {{ theme.name }}
+              </option>
+            </select>
+            
+            <button 
+              @click="isAnalyzing ? stopAnalysis() : startAnalysis()" 
+              :class="isAnalyzing ? 'btn-secondary' : 'btn-primary'"
+              class="text-xs md:text-sm px-4 md:px-6 py-2 md:py-3"
+            >
+              {{ isAnalyzing ? '⏸ Stop' : '▶ Analyze' }}
+            </button>
+            <button @click="handleLogout" class="btn-secondary text-xs md:text-sm px-4 md:px-6 py-2 md:py-3">
+              Logout
+            </button>
+          </div>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
     <div class="container mx-auto px-4 py-8">
-      <div class="grid lg:grid-cols-3 gap-8">
+      <div class="grid lg:grid-cols-3 gap-6 md:gap-8">
         <!-- Left Column - Visualizer -->
-        <div class="lg:col-span-2 space-y-6">
+        <div class="lg:col-span-2 space-y-4 md:space-y-6">
           <!-- Visualizer Card -->
           <div class="card">
-            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-              🌊 Audio Visualizer
-              <span v-if="isPlaying" class="text-sm font-normal text-spotify-green">(Live)</span>
+            <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
+              🌌 Music Cosmos
+              <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green">(Live)</span>
             </h2>
-            <WaveformCanvas :is-playing="isPlaying" />
+            <CosmicVisualizer 
+              :is-playing="isPlaying" 
+              :tracks="recommendations"
+              @play-track="playTrack"
+              class="h-[300px] md:h-[400px] lg:h-[600px]"
+            />
           </div>
 
           <!-- Now Playing Card -->
@@ -112,6 +129,9 @@
 
         <!-- Right Column - Recommendations -->
         <div class="space-y-6">
+          <!-- Discovery Filters -->
+          <DiscoveryFilters @update="updateFilters" />
+
           <!-- Discovery Queue -->
           <div class="card">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -132,22 +152,31 @@
               <div 
                 v-for="track in recommendations" 
                 :key="track.id"
-                @click="playTrack(track)"
-                class="bg-spotify-dark p-3 rounded-lg hover:bg-opacity-60 cursor-pointer transition-all hover:scale-[1.02]"
+                class="bg-spotify-dark p-3 rounded-lg hover:bg-opacity-60 transition-all hover:scale-[1.02] relative group"
               >
                 <div class="flex items-center gap-3">
                   <img 
                     v-if="track.album?.images?.[2]?.url" 
                     :src="track.album.images[2].url" 
                     alt="Album art"
-                    class="w-12 h-12 rounded"
+                    class="w-12 h-12 rounded cursor-pointer"
+                    @click="playTrack(track)"
                   />
-                  <div class="flex-1 min-w-0">
+                  <div class="flex-1 min-w-0 cursor-pointer" @click="playTrack(track)">
                     <p class="font-semibold truncate">{{ track.name }}</p>
                     <p class="text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
                   </div>
-                  <div class="text-xs text-spotify-green">
-                    {{ track.popularity }}% 
+                  <div class="flex items-center gap-2">
+                    <button
+                      @click="toggleFavorite(track)"
+                      class="text-2xl hover:scale-125 transition-transform"
+                      :title="isFavorited(track) ? 'Remove from favorites' : 'Add to favorites'"
+                    >
+                      {{ isFavorited(track) ? '❤️' : '🤍' }}
+                    </button>
+                    <div class="text-xs text-spotify-green">
+                      {{ track.popularity }}% 
+                    </div>
                   </div>
                 </div>
               </div>
@@ -161,6 +190,16 @@
             >
               Load More
             </button>
+
+            <button 
+              v-if="savedTracks.length > 0"
+              @click="saveToPlaylist" 
+              class="btn-primary w-full mt-2 flex items-center justify-center gap-2"
+              :disabled="isSavingPlaylist"
+            >
+              <span v-if="!isSavingPlaylist">💾 Save {{ savedTracks.length }} to Playlist</span>
+              <span v-else>Saving...</span>
+            </button>
           </div>
         </div>
       </div>
@@ -172,19 +211,35 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useThemeStore } from '../stores/theme'
 import spotifyService from '../services/spotify'
 import CosmicVisualizer from '../components/Visualizer/CosmicVisualizer.vue'
+import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 
 const isAnalyzing = ref(false)
 const analysisComplete = ref(false)
 const isLoadingRecommendations = ref(false)
+const isSavingPlaylist = ref(false)
 const tasteProfile = ref(null)
 const recommendations = ref([])
+const savedTracks = ref([]) // Favorited tracks
 const currentTrack = ref(null)
 const isPlaying = ref(false)
+const discoveryFilters = ref({
+  maxPopularity: 50,
+  targetEnergy: 0.5,
+  targetDanceability: 0.5,
+  targetValence: 0.5,
+  minYear: 1980,
+  maxYear: 2025,
+  genre: '',
+  useAcousticness: false,
+  targetAcousticness: 0.5
+})
 
 let player = null
 let deviceId = null
@@ -192,9 +247,8 @@ let deviceId = null
 // Initialize Spotify Web Playback SDK
 onMounted(() => {
   loadSpotifyPlayer()
-  
-  // Check current playback
   checkCurrentPlayback()
+  themeStore.loadSavedTheme()
 })
 
 onUnmounted(() => {
@@ -333,18 +387,46 @@ const loadRecommendations = async () => {
     const topTracks = await spotifyService.getUserTopTracks('short_term', 5)
     const seedTracks = topTracks.items.slice(0, 3).map(t => t.id)
 
-    // Request recommendations with popularity cap
-    const recs = await spotifyService.getRecommendations({
+    // Build parameters with filters
+    const params = {
       seed_tracks: seedTracks,
       limit: 20,
-      max_popularity: 50, // Focus on lesser-known artists!
-      target_energy: tasteProfile.value?.avgEnergy,
-      target_danceability: tasteProfile.value?.avgDanceability
-    })
+      max_popularity: discoveryFilters.value.maxPopularity,
+      target_energy: discoveryFilters.value.targetEnergy,
+      target_danceability: discoveryFilters.value.targetDanceability,
+      target_valence: discoveryFilters.value.targetValence
+    }
 
-    recommendations.value = [...recommendations.value, ...recs.tracks]
+    // Add optional filters
+    if (discoveryFilters.value.useAcousticness) {
+      params.target_acousticness = discoveryFilters.value.targetAcousticness
+    }
+
+    // Request recommendations
+    const recs = await spotifyService.getRecommendations(params)
+
+    // Filter by year if needed
+    let filteredTracks = recs.tracks
+    if (discoveryFilters.value.minYear > 1950 || discoveryFilters.value.maxYear < 2025) {
+      filteredTracks = recs.tracks.filter(track => {
+        if (!track.album?.release_date) return true
+        const year = parseInt(track.album.release_date.substring(0, 4))
+        return year >= discoveryFilters.value.minYear && year <= discoveryFilters.value.maxYear
+      })
+    }
+
+    recommendations.value = [...recommendations.value, ...filteredTracks]
   } catch (error) {
     console.error('Error loading recommendations:', error)
+  }
+}
+
+const updateFilters = (newFilters) => {
+  discoveryFilters.value = newFilters
+  // Refresh recommendations with new filters
+  if (analysisComplete.value) {
+    recommendations.value = []
+    loadRecommendations()
   }
 }
 
@@ -408,5 +490,45 @@ const previousTrack = async () => {
 const handleLogout = () => {
   authStore.logout()
   router.push('/')
+}
+
+const toggleFavorite = (track) => {
+  const index = savedTracks.value.findIndex(t => t.id === track.id)
+  if (index > -1) {
+    savedTracks.value.splice(index, 1)
+  } else {
+    savedTracks.value.push(track)
+  }
+}
+
+const isFavorited = (track) => {
+  return savedTracks.value.some(t => t.id === track.id)
+}
+
+const saveToPlaylist = async () => {
+  if (savedTracks.value.length === 0) return
+  
+  isSavingPlaylist.value = true
+  
+  try {
+    const userId = authStore.user.id
+    const playlistName = `Hidden Gems - ${new Date().toLocaleDateString()}`
+    const description = `Discovered ${savedTracks.value.length} hidden gems with Discovery Studio`
+    
+    // Create playlist
+    const playlist = await spotifyService.createPlaylist(userId, playlistName, description, true)
+    
+    // Add tracks
+    const trackUris = savedTracks.value.map(t => t.uri)
+    await spotifyService.addTracksToPlaylist(playlist.id, trackUris)
+    
+    alert(`✅ Saved ${savedTracks.value.length} tracks to "${playlistName}"!\n\nCheck your Spotify library!`)
+    savedTracks.value = []
+  } catch (error) {
+    console.error('Error saving playlist:', error)
+    alert('Error saving playlist. Check console for details.')
+  } finally {
+    isSavingPlaylist.value = false
+  }
 }
 </script>
