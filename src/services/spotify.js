@@ -315,5 +315,16 @@ export default {
       console.error('Error adding tracks to playlist:', error)
       throw error
     }
+  },
+
+  // Get audio analysis for a track (detailed time-series data)
+  async getAudioAnalysis(trackId) {
+    try {
+      const response = await spotifyApi.get(`/audio-analysis/${trackId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching audio analysis:', error)
+      throw error
+    }
   }
 }
