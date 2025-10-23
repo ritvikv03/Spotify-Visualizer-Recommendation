@@ -69,11 +69,13 @@ import * as THREE from 'three'
 
 const props = defineProps({
   isPlaying: Boolean,
-  artists: {
+  tracks: {
     type: Array,
     default: () => []
   }
 })
+
+const emit = defineEmits(['play-track'])
 
 const canvas = ref(null)
 const currentMode = ref('galaxy')
@@ -90,7 +92,7 @@ const visualizerModes = [
   { id: 'chaos', name: 'CHAOS', icon: '🌀' }
 ]
 
-let scene, camera, renderer
+let scene, camera, renderer, raycaster, mouse
 let animationId = null
 let audioContext, analyser, dataArray, bufferLength
 
@@ -100,16 +102,30 @@ let dnaHelix = { strand1: [], strand2: [], connections: [] }
 let quantumParticles = []
 let tunnelRings = []
 
+// Mouse handling
+raycaster = new THREE.Raycaster()
+mouse = new THREE.Vector2()
+
 onMounted(() => {
   initThreeJS()
   initAudio()
   animate()
+  
+  // Add mouse events
+  canvas.value.addEventListener('mousemove', onMouseMove)
+  canvas.value.addEventListener('click', onMouseClick)
 })
 
 onUnmounted(() => {
   if (animationId) cancelAnimationFrame(animationId)
   if (renderer) renderer.dispose()
   if (audioContext) audioContext.close()
+  
+  // Remove mouse events
+  if (canvas.value) {
+    canvas.value.removeEventListener('mousemove', onMouseMove)
+    canvas.value.removeEventListener('click', onMouseClick)
+  }
 })
 
 watch(() => props.isPlaying, (playing) => {
@@ -227,7 +243,7 @@ const initMode = (mode) => {
 }
 
 const createGalaxy = () => {
-  const starCount = 1000
+  const starCount = Math.min(props.tracks.length * 3, 1000)
   
   for (let i = 0; i < starCount; i++) {
     const geometry = new THREE.SphereGeometry(Math.random() * 2 + 0.5, 8, 8)
@@ -250,10 +266,15 @@ const createGalaxy = () => {
     star.position.y = (Math.random() - 0.5) * 40
     star.position.z = Math.sin(angle + armOffset) * radius
     
+    // Assign track data to some stars
+    const trackIndex = i % props.tracks.length
     star.userData = {
       originalY: star.position.y,
       speed: Math.random() * 0.01 + 0.001,
-      hue: hue
+      hue: hue,
+      track: props.tracks[trackIndex],
+      clickable: i < props.tracks.length, // Only first N stars are clickable
+      isHovered: false
     }
     
     scene.add(star)
@@ -546,6 +567,85 @@ const onWindowResize = () => {
   camera.aspect = canvas.value.clientWidth / canvas.value.clientHeight
   camera.updateProjectionMatrix()
   renderer.setSize(canvas.value.clientWidth, canvas.value.clientHeight)
+}
+
+const onMouseMove = (event) => {
+  const rect = canvas.value.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  
+  // Only check for hovers in galaxy mode
+  if (currentMode.value === 'galaxy' || currentMode.value === 'chaos') {
+    raycaster.setFromCamera(mouse, camera)
+    const intersects = raycaster.intersectObjects(galaxyStars)
+    
+    // Reset all hovers
+    galaxyStars.forEach(star => {
+      if (star.userData.clickable) {
+        star.userData.isHovered = false
+        star.scale.set(1, 1, 1)
+      }
+    })
+    
+    // Highlight hovered star
+    if (intersects.length > 0) {
+      const hoveredStar = intersects[0].object
+      if (hoveredStar.userData.clickable && hoveredStar.userData.track) {
+        hoveredStar.userData.isHovered = true
+        hoveredStar.scale.set(2, 2, 2)
+        hoveredArtist.value = {
+          name: hoveredStar.userData.track.name,
+          genre: hoveredStar.userData.track.artists?.map(a => a.name).join(', ') || 'Unknown'
+        }
+        canvas.value.style.cursor = 'pointer'
+        return
+      }
+    }
+    
+    hoveredArtist.value = null
+    canvas.value.style.cursor = 'default'
+  }
+}
+
+const onMouseClick = (event) => {
+  if (currentMode.value !== 'galaxy' && currentMode.value !== 'chaos') return
+  
+  const rect = canvas.value.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  
+  raycaster.setFromCamera(mouse, camera)
+  const intersects = raycaster.intersectObjects(galaxyStars)
+  
+  if (intersects.length > 0) {
+    const clickedStar = intersects[0].object
+    if (clickedStar.userData.clickable && clickedStar.userData.track) {
+      emit('play-track', clickedStar.userData.track)
+      
+      // Visual feedback - explosion effect
+      const explosionParticles = []
+      for (let i = 0; i < 20; i++) {
+        const geo = new THREE.SphereGeometry(0.3, 4, 4)
+        const mat = new THREE.MeshBasicMaterial({ color: clickedStar.material.color })
+        const particle = new THREE.Mesh(geo, mat)
+        particle.position.copy(clickedStar.position)
+        particle.userData.velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 2
+        )
+        scene.add(particle)
+        explosionParticles.push(particle)
+        
+        // Remove after 1 second
+        setTimeout(() => {
+          scene.remove(particle)
+          particle.geometry.dispose()
+          particle.material.dispose()
+        }, 1000)
+      }
+    }
+  }
 }
 </script>
 
