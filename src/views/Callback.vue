@@ -38,10 +38,16 @@ const error = ref(null)
 const statusMessage = ref('Authenticating...')
 
 onMounted(async () => {
+  console.log('Callback page loaded')
+  console.log('Full URL:', window.location.href)
+  
   // Get the authorization code from URL
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('code')
   const errorParam = urlParams.get('error')
+
+  console.log('Code:', code ? 'exists' : 'missing')
+  console.log('Error param:', errorParam)
 
   if (errorParam) {
     error.value = 'You denied the authorization request'
@@ -57,7 +63,11 @@ onMounted(async () => {
 
   try {
     statusMessage.value = 'Exchanging authorization code...'
+    console.log('Calling handleCallback...')
     const success = await authStore.handleCallback(code)
+
+    console.log('handleCallback result:', success)
+    console.log('Access token after callback:', authStore.accessToken ? 'exists' : 'missing')
 
     if (success) {
       statusMessage.value = 'Success! Redirecting...'
@@ -70,7 +80,7 @@ onMounted(async () => {
     }
   } catch (err) {
     console.error('Callback error:', err)
-    error.value = 'An unexpected error occurred'
+    error.value = 'An unexpected error occurred: ' + err.message
     isProcessing.value = false
   }
 })

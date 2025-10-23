@@ -35,7 +35,7 @@
           <!-- Visualizer Card -->
           <div class="card">
             <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-               Audio Visualizer
+              🌊 Audio Visualizer
               <span v-if="isPlaying" class="text-sm font-normal text-spotify-green">(Live)</span>
             </h2>
             <WaveformCanvas :is-playing="isPlaying" />
@@ -115,7 +115,7 @@
           <!-- Discovery Queue -->
           <div class="card">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-               Hidden Gems
+              💎 Hidden Gems
               <span class="text-sm font-normal text-gray-400">({{ recommendations.length }})</span>
             </h3>
             
@@ -173,7 +173,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import spotifyService from '../services/spotify'
-import WaveformCanvas from '../components/Visualizer/WaveformCanvas.vue'
+import CosmicVisualizer from '../components/Visualizer/CosmicVisualizer.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -253,17 +253,34 @@ const startAnalysis = async () => {
   try {
     console.log('Starting analysis...')
     
-    // Get user's top tracks and artists
-    const [topTracks, topArtists] = await Promise.all([
-      spotifyService.getUserTopTracks('short_term', 20),
-      spotifyService.getUserTopArtists('short_term', 10)
-    ])
+    // Try different time ranges as fallback
+    let topTracks = null
+    let topArtists = null
+    
+    // Try short_term first (last 4 weeks)
+    try {
+      console.log('Trying short_term...')
+      topTracks = await spotifyService.getUserTopTracks('short_term', 20)
+      topArtists = await spotifyService.getUserTopArtists('short_term', 10)
+    } catch (error) {
+      console.log('short_term failed, trying medium_term...', error)
+      // Fallback to medium_term (last 6 months)
+      try {
+        topTracks = await spotifyService.getUserTopTracks('medium_term', 20)
+        topArtists = await spotifyService.getUserTopArtists('medium_term', 10)
+      } catch (error2) {
+        console.log('medium_term failed, trying long_term...', error2)
+        // Last resort: long_term (all time)
+        topTracks = await spotifyService.getUserTopTracks('long_term', 20)
+        topArtists = await spotifyService.getUserTopArtists('long_term', 10)
+      }
+    }
 
-    console.log('Got top tracks:', topTracks.items.length)
-    console.log('Got top artists:', topArtists.items.length)
+    console.log('Got top tracks:', topTracks?.items?.length || 0)
+    console.log('Got top artists:', topArtists?.items?.length || 0)
 
-    if (!topTracks.items.length) {
-      alert('No listening history found! Play some music on Spotify first, then try again.')
+    if (!topTracks?.items?.length) {
+      alert('No listening history found! Play some music on Spotify first, then try again in a few minutes.')
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
@@ -271,6 +288,7 @@ const startAnalysis = async () => {
 
     // Get audio features
     const trackIds = topTracks.items.map(t => t.id)
+    console.log('Fetching audio features for', trackIds.length, 'tracks...')
     const audioFeatures = await spotifyService.getAudioFeatures(trackIds)
 
     console.log('Got audio features:', audioFeatures)
@@ -301,6 +319,7 @@ const startAnalysis = async () => {
     console.log('Analysis complete! Found', recommendations.value.length, 'recommendations')
   } catch (error) {
     console.error('Analysis error:', error)
+    console.error('Error details:', error.response?.data || error.message)
     alert('Error analyzing your taste: ' + error.message + '. Check console for details.')
   } finally {
     isAnalyzing.value = false

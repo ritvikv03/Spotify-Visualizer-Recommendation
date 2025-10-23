@@ -100,6 +100,17 @@ export default {
     }
   },
 
+  // Get detailed audio analysis for a track (includes beats, bars, sections)
+  async getAudioAnalysis(trackId) {
+    try {
+      const response = await spotifyApi.get(`/audio-analysis/${trackId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching audio analysis:', error)
+      throw error
+    }
+  },
+
   // Get recommendations based on seed data
   async getRecommendations(params) {
     try {
