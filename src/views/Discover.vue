@@ -15,15 +15,42 @@
           
           <div class="flex items-center gap-2 md:gap-4">
             <!-- Theme Selector -->
-            <select 
-              v-model="themeStore.currentTheme"
-              class="bg-spotify-gray px-3 md:px-4 py-2 md:py-2.5 rounded text-xs md:text-sm border border-white border-opacity-20 hover:border-opacity-40 transition-colors appearance-none cursor-pointer pr-8 bg-no-repeat bg-right"
-              style="background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e'); background-position: right 0.5rem center; background-size: 1.25rem;"
-            >
-              <option v-for="(theme, key) in themeStore.themes" :key="key" :value="key">
-                {{ theme.name }}
-              </option>
-            </select>
+            <div class="relative">
+              <button
+                @click="showThemeMenu = !showThemeMenu"
+                class="btn-secondary text-xs md:text-sm px-4 md:px-6 py-2 md:py-3 flex items-center gap-2 font-semibold"
+                :style="{ 
+                  backgroundColor: themeStore.themes[themeStore.currentTheme].primary,
+                  color: themeStore.currentTheme === 'neon' || themeStore.currentTheme === 'ocean' ? '#000' : '#fff'
+                }"
+              >
+                <span>🎨 Theme</span>
+                <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': showThemeMenu }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              
+              <!-- Dropdown Menu -->
+              <div 
+                v-if="showThemeMenu"
+                class="absolute top-full mt-2 right-0 bg-spotify-gray rounded-lg shadow-xl border border-white border-opacity-20 overflow-hidden z-50 min-w-[180px]"
+              >
+                <button
+                  v-for="(theme, key) in themeStore.themes"
+                  :key="key"
+                  @click="themeStore.currentTheme = key; showThemeMenu = false"
+                  class="w-full px-4 py-3 text-left text-sm hover:bg-opacity-80 transition-colors flex items-center gap-3"
+                  :style="{ 
+                    backgroundColor: theme.primary,
+                    color: key === 'neon' || key === 'ocean' ? '#000' : '#fff'
+                  }"
+                >
+                  <span v-if="themeStore.currentTheme === key" class="text-lg">✓</span>
+                  <span v-else class="text-lg opacity-0">✓</span>
+                  <span class="font-semibold">{{ theme.name }}</span>
+                </button>
+              </div>
+            </div>
             
             <button 
               @click="isAnalyzing ? stopAnalysis() : startAnalysis()" 
@@ -230,6 +257,7 @@ const recommendations = ref([])
 const savedTracks = ref([]) // Favorited tracks
 const currentTrack = ref(null)
 const isPlaying = ref(false)
+const showThemeMenu = ref(false)
 const discoveryFilters = ref({
   maxPopularity: 50,
   targetEnergy: 0.5,
@@ -250,6 +278,13 @@ onMounted(() => {
   loadSpotifyPlayer()
   checkCurrentPlayback()
   themeStore.loadSavedTheme()
+  
+  // Close theme menu when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.relative')) {
+      showThemeMenu.value = false
+    }
+  })
 })
 
 onUnmounted(() => {
