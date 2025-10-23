@@ -14,18 +14,20 @@ export const useAuthStore = defineStore('auth', () => {
 
   const clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID
   const redirectUri = import.meta.env.VITE_REDIRECT_URI
-  console.log('Client ID:', clientId)
-  console.log('Redirect URI:', redirectUri)
-
   const scopes = [
     'user-read-private',
     'user-read-email',
     'user-top-read',
     'user-read-recently-played',
+    'user-library-read',
     'streaming',
     'user-read-playback-state',
     'user-modify-playback-state',
-    'playlist-read-private'
+    'user-read-currently-playing',
+    'playlist-read-private',
+    'playlist-read-collaborative',
+    'playlist-modify-public',
+    'playlist-modify-private'
   ]
 
   // Generate random string for security
