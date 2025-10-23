@@ -1,5 +1,5 @@
 <template>
-  <div class="relative w-full bg-black rounded-lg overflow-hidden shadow-2xl" style="height: 600px;">
+  <div class="relative w-full bg-black rounded-lg overflow-hidden shadow-2xl h-full min-h-[300px]">
     <!-- Three.js Canvas -->
     <canvas ref="canvas" class="w-full h-full"></canvas>
     
