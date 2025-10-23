@@ -425,15 +425,19 @@ const startAnalysis = async () => {
       }
     }
     
-    // Remove duplicates
+    // Remove duplicates and validate tracks
     const uniqueTracks = Array.from(
-      new Map(tracks.filter(t => t && t.id).map(t => [t.id, t])).values()
+      new Map(
+        tracks
+          .filter(t => t && t.id && t.name && !t.is_local) // Filter out local files and invalid tracks
+          .map(t => [t.id, t])
+      ).values()
     ).slice(0, 50)
     
     console.log(`🎯 Total unique tracks found: ${uniqueTracks.length} (from ${dataSource})`)
 
     if (uniqueTracks.length === 0) {
-      alert(`😔 No music data found!\n\n✨ Quick start:\n\n1. Open Spotify and play 5-10 songs\n2. Like a few songs (❤️ button)\n3. Wait 2-3 minutes\n4. Come back and click Analyze!\n\nSpotify needs some activity before we can generate recommendations.`)
+      alert(`😔 No valid tracks found!\n\n✨ Quick start:\n\n1. Open Spotify and play 5-10 songs (not local files)\n2. Like a few songs (❤️ button)\n3. Wait 2-3 minutes\n4. Come back and click Analyze!\n\nNote: We can't analyze local files or unavailable tracks.`)
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
@@ -441,12 +445,12 @@ const startAnalysis = async () => {
 
     // Try to get top artists (optional, won't fail if unavailable)
     for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
+      if (artists.length >= 10) break
       try {
         const artistsResult = await spotifyService.getUserTopArtists(timeRange, 15)
         if (artistsResult?.items?.length > 0) {
-          artists = artistsResult.items
-          console.log(`✓ Found ${artists.length} top artists from ${timeRange}`)
-          break
+          artists = [...artists, ...artistsResult.items]
+          console.log(`✓ Found ${artistsResult.items.length} top artists from ${timeRange}`)
         }
       } catch (error) {
         console.log(`Top artists ${timeRange} unavailable`)
@@ -469,75 +473,66 @@ const startAnalysis = async () => {
       }
     }
 
-    // Get audio features
+    // Get audio features with better error handling
     const trackIds = uniqueTracks.map(t => t.id).filter(id => id)
     console.log('🎼 Analyzing audio features for', trackIds.length, 'tracks...')
+    console.log('Track IDs sample:', trackIds.slice(0, 5))
     
-    let audioFeatures
+    let allFeatures = []
+    
     try {
-      // Spotify's audio features endpoint can handle up to 100 tracks
-      // But let's batch in smaller chunks to be safe
-      const batchSize = 50
-      const batches = []
+      // Try fetching in smaller batches to avoid rate limits
+      const batchSize = 20 // Smaller batches
       
       for (let i = 0; i < trackIds.length; i += batchSize) {
         const batch = trackIds.slice(i, i + batchSize)
-        batches.push(batch)
-      }
-      
-      console.log(`Processing ${batches.length} batches...`)
-      
-      const allFeatures = []
-      for (const batch of batches) {
+        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(trackIds.length / batchSize)}...`)
+        
         try {
           const batchResult = await spotifyService.getAudioFeatures(batch)
           if (batchResult?.audio_features) {
-            allFeatures.push(...batchResult.audio_features)
+            const validFeatures = batchResult.audio_features.filter(f => f !== null)
+            allFeatures.push(...validFeatures)
+            console.log(`✓ Got ${validFeatures.length} features from this batch`)
+          }
+          
+          // Small delay between batches to avoid rate limiting
+          if (i + batchSize < trackIds.length) {
+            await new Promise(resolve => setTimeout(resolve, 100))
           }
         } catch (batchError) {
-          console.error('Batch failed:', batchError)
+          console.error(`Batch ${Math.floor(i / batchSize) + 1} failed:`, batchError.response?.status, batchError.response?.data)
+          // Continue with next batch even if one fails
         }
       }
       
-      audioFeatures = { audio_features: allFeatures }
-      console.log(`✓ Got audio features for ${allFeatures.filter(f => f).length} tracks`)
+      console.log(`✓ Total audio features collected: ${allFeatures.length} out of ${trackIds.length}`)
       
     } catch (error) {
       console.error('Audio features error:', error)
       console.error('Status:', error.response?.status)
       console.error('Data:', error.response?.data)
-      
-      alert(`❌ Audio Analysis Failed\n\nError: ${error.message}\n\nThis might be because:\n1. Your account is very new\n2. Spotify API is having issues\n3. The tracks are unavailable\n\nTry:\n1. Playing more music on Spotify\n2. Waiting a few minutes\n3. Trying again`)
-      
-      isAnalyzing.value = false
-      isLoadingRecommendations.value = false
-      return
     }
-
-    // Calculate taste profile
-    const features = audioFeatures.audio_features.filter(f => f !== null)
     
-    console.log(`Valid features: ${features.length} out of ${trackIds.length}`)
-    
-    if (features.length === 0) {
-      alert(`😕 No audio features available\n\nWe found ${uniqueTracks.length} tracks but couldn't analyze them.\n\nThis usually means:\n1. The tracks are unavailable in your region\n2. Your Spotify account is brand new\n\nTry:\n1. Playing different songs\n2. Using Spotify for a few days\n3. Coming back later!`)
+    // Check if we got enough features
+    if (allFeatures.length === 0) {
+      alert(`❌ Cannot Analyze Audio\n\nWe found ${uniqueTracks.length} tracks but Spotify won't let us analyze them.\n\nThis happens when:\n1. Tracks are region-locked\n2. Tracks are local files\n3. Your account is brand new\n4. Spotify API is having issues\n\nTry:\n1. Playing different songs\n2. Using Spotify Premium\n3. Waiting a day and trying again`)
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
     }
     
-    // Need at least 5 features to make recommendations
-    if (features.length < 5) {
-      alert(`⚠️ Not enough data\n\nWe only got ${features.length} valid tracks.\n\nPlease:\n1. Listen to more songs on Spotify\n2. Make sure songs are actually playing\n3. Try again in a few minutes`)
+    if (allFeatures.length < 5) {
+      alert(`⚠️ Not Enough Data\n\nOnly ${allFeatures.length} out of ${uniqueTracks.length} tracks could be analyzed.\n\nPlease:\n1. Listen to more popular songs (not local files)\n2. Make sure tracks are available in your region\n3. Try again with different music`)
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
     }
 
     tasteProfile.value = {
-      avgEnergy: features.reduce((sum, f) => sum + f.energy, 0) / features.length,
-      avgDanceability: features.reduce((sum, f) => sum + f.danceability, 0) / features.length,
-      avgValence: features.reduce((sum, f) => sum + f.valence, 0) / features.length,
+      avgEnergy: allFeatures.reduce((sum, f) => sum + f.energy, 0) / allFeatures.length,
+      avgDanceability: allFeatures.reduce((sum, f) => sum + f.danceability, 0) / allFeatures.length,
+      avgValence: allFeatures.reduce((sum, f) => sum + f.valence, 0) / allFeatures.length,
       topGenre: artists[0]?.genres?.[0] || 'Mixed'
     }
 
