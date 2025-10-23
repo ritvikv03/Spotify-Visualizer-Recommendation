@@ -53,13 +53,14 @@
               </div>
             </div>
             
-            <button 
-              @click="isAnalyzing ? stopAnalysis() : startAnalysis()" 
+            <button
+              @click="isAnalyzing ? stopAnalysis() : startAnalysis()"
               :class="isAnalyzing ? 'btn-secondary' : 'btn-primary'"
               class="text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap"
+              :disabled="isAnalyzing"
             >
-              <span class="hidden sm:inline">{{ isAnalyzing ? '⏸ Stop' : '▶ Analyze' }}</span>
-              <span class="sm:hidden">{{ isAnalyzing ? '⏸' : '▶' }}</span>
+              <span class="hidden sm:inline">{{ isAnalyzing ? '⏳ Analyzing...' : '✨ Analyze My Taste' }}</span>
+              <span class="sm:hidden">{{ isAnalyzing ? '⏳' : '✨' }}</span>
             </button>
             <button @click="handleLogout" class="btn-secondary text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap">
               <span class="hidden sm:inline">Logout</span>
@@ -78,12 +79,15 @@
           <!-- Visualizer Card -->
           <div class="card">
             <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
-              🌌 Music Cosmos
-              <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green">(Live)</span>
+              🌌 Your Music Universe
+              <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green animate-pulse">(🎵 Live Audio)</span>
+              <span v-else-if="analysisComplete" class="text-xs md:text-sm font-normal text-cyan-400">(✨ Visualized)</span>
             </h2>
-            <CosmicVisualizer 
-              :is-playing="isPlaying" 
+            <CosmicVisualizer
+              :is-playing="isPlaying"
+              :is-analyzed="analysisComplete"
               :tracks="recommendations"
+              :taste-profile="tasteProfile"
               @play-track="playTrack"
               class="h-[300px] md:h-[400px] lg:h-[600px]"
             />
@@ -104,8 +108,11 @@
           </div>
 
           <!-- Now Playing Card -->
-          <div v-if="currentTrack" class="card">
-            <h3 class="text-xl font-semibold mb-4">Now Playing</h3>
+          <div v-if="currentTrack" class="card border border-spotify-green/30">
+            <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
+              <span class="text-spotify-green animate-pulse">♫</span>
+              Now Playing
+            </h3>
             <div class="flex items-center gap-4">
               <img 
                 v-if="currentTrack.album?.images?.[0]?.url" 
@@ -149,35 +156,43 @@
           </div>
 
           <!-- Analysis Results -->
-          <div v-if="analysisComplete && tasteProfile" class="card">
-            <h3 class="text-xl font-semibold mb-4">🎭 Your Music DNA</h3>
+          <div v-if="analysisComplete && tasteProfile" class="card bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/20">
+            <h3 class="text-xl font-semibold mb-4">✨ Your Musical Identity</h3>
             <div class="grid grid-cols-2 gap-4">
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Avg. Popularity</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.avgPopularity.toFixed(0) }}%</p>
-                <p class="text-xs text-gray-500 mt-1">{{ tasteProfile.avgPopularity > 60 ? 'Mainstream' : 'Indie Explorer' }}</p>
+              <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
+                <p class="text-sm text-gray-400">Popularity Index</p>
+                <p class="text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-400 bg-clip-text text-transparent">{{ tasteProfile.avgPopularity.toFixed(0) }}%</p>
+                <p class="text-xs text-cyan-400 mt-1">
+                  {{ tasteProfile.avgPopularity > 70 ? '🔥 Chart Chaser' :
+                     tasteProfile.avgPopularity > 50 ? '🎵 Balanced Listener' :
+                     '💎 Underground Explorer' }}
+                </p>
               </div>
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Diversity Score</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ (tasteProfile.diversityScore * 100).toFixed(0) }}%</p>
-                <p class="text-xs text-gray-500 mt-1">{{ tasteProfile.diversityScore > 0.7 ? 'Very Diverse' : 'Focused' }}</p>
+              <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
+                <p class="text-sm text-gray-400">Taste Diversity</p>
+                <p class="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">{{ (tasteProfile.diversityScore * 100).toFixed(0) }}%</p>
+                <p class="text-xs text-pink-400 mt-1">
+                  {{ tasteProfile.diversityScore > 0.75 ? '🌈 Eclectic Adventurer' :
+                     tasteProfile.diversityScore > 0.5 ? '🎨 Genre Hopper' :
+                     '🎯 Genre Specialist' }}
+                </p>
               </div>
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Primary Genre</p>
-                <p class="text-lg font-bold text-spotify-green">{{ tasteProfile.topGenre }}</p>
+              <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
+                <p class="text-sm text-gray-400">Core Genre</p>
+                <p class="text-lg font-bold text-cyan-300 capitalize">{{ tasteProfile.topGenre }}</p>
               </div>
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Tracks Analyzed</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.tracksAnalyzed }}</p>
+              <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
+                <p class="text-sm text-gray-400">Songs Analyzed</p>
+                <p class="text-2xl font-bold text-emerald-400">{{ tasteProfile.tracksAnalyzed }}</p>
               </div>
             </div>
-            <div v-if="tasteProfile.topGenres" class="mt-4 pt-4 border-t border-spotify-dark">
-              <p class="text-sm text-gray-400 mb-2">Your Top Genres:</p>
+            <div v-if="tasteProfile.topGenres" class="mt-4 pt-4 border-t border-purple-500/20">
+              <p class="text-sm text-gray-400 mb-3">🎼 Your Genre Palette:</p>
               <div class="flex flex-wrap gap-2">
-                <span 
-                  v-for="genre in tasteProfile.topGenres" 
+                <span
+                  v-for="genre in tasteProfile.topGenres"
                   :key="genre"
-                  class="px-3 py-1 bg-spotify-green bg-opacity-20 text-spotify-green rounded-full text-xs"
+                  class="px-3 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 rounded-full text-xs border border-purple-500/30 capitalize"
                 >
                   {{ genre }}
                 </span>
@@ -192,19 +207,21 @@
           <DiscoveryFilters @update="updateFilters" />
 
           <!-- Discovery Queue -->
-          <div class="card">
+          <div class="card border border-cyan-500/20">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-              💎 Hidden Gems
-              <span class="text-sm font-normal text-gray-400">({{ recommendations.length }})</span>
+              💎 Your Hidden Gems
+              <span class="text-sm font-normal text-cyan-400">({{ recommendations.length }})</span>
             </h3>
             
             <div v-if="isLoadingRecommendations" class="text-center py-8">
               <div class="animate-spin w-8 h-8 border-4 border-spotify-green border-t-transparent rounded-full mx-auto"></div>
-              <p class="text-gray-400 mt-4">Finding hidden gems...</p>
+              <p class="text-gray-400 mt-4">✨ Discovering your perfect tracks...</p>
             </div>
 
             <div v-else-if="recommendations.length === 0" class="text-center py-8">
-              <p class="text-gray-400 mb-4">Click "Analyze My Taste" to discover new music!</p>
+              <div class="text-6xl mb-4">🎵</div>
+              <p class="text-lg font-semibold mb-2">Ready to Discover?</p>
+              <p class="text-gray-400 text-sm">Click "✨ Analyze My Taste" above to unlock personalized hidden gems based on your music profile!</p>
             </div>
 
             <div v-else class="space-y-3 max-h-[600px] overflow-y-auto">
@@ -241,23 +258,24 @@
               </div>
             </div>
 
-            <button 
+            <button
               v-if="analysisComplete && recommendations.length > 0"
-              @click="loadMoreRecommendations" 
+              @click="loadMoreRecommendations"
               class="btn-secondary w-full mt-4"
               :disabled="isLoadingRecommendations"
             >
-              Load More
+              <span v-if="!isLoadingRecommendations">🔍 Discover More Gems</span>
+              <span v-else>⏳ Searching...</span>
             </button>
 
-            <button 
+            <button
               v-if="savedTracks.length > 0"
-              @click="saveToPlaylist" 
+              @click="saveToPlaylist"
               class="btn-primary w-full mt-2 flex items-center justify-center gap-2"
               :disabled="isSavingPlaylist"
             >
-              <span v-if="!isSavingPlaylist">💾 Save {{ savedTracks.length }} to Playlist</span>
-              <span v-else>Saving...</span>
+              <span v-if="!isSavingPlaylist">💾 Save {{ savedTracks.length }} {{ savedTracks.length === 1 ? 'Track' : 'Tracks' }} to Spotify</span>
+              <span v-else>✨ Creating Playlist...</span>
             </button>
           </div>
         </div>
