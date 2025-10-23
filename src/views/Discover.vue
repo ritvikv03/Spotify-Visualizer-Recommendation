@@ -89,6 +89,20 @@
             />
           </div>
 
+          <!-- Error Message -->
+          <div v-if="analysisError" class="card bg-red-900 bg-opacity-30 border border-red-500">
+            <div class="flex items-start gap-3">
+              <span class="text-2xl">⚠️</span>
+              <div class="flex-1">
+                <h3 class="font-semibold text-red-400 mb-2">Analysis Error</h3>
+                <p class="text-sm text-gray-300">{{ analysisError }}</p>
+                <button @click="analysisError = null" class="mt-3 text-xs text-red-400 hover:text-red-300">
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Now Playing Card -->
           <div v-if="currentTrack" class="card">
             <h3 class="text-xl font-semibold mb-4">Now Playing</h3>
@@ -251,6 +265,7 @@ const isAnalyzing = ref(false)
 const analysisComplete = ref(false)
 const isLoadingRecommendations = ref(false)
 const isSavingPlaylist = ref(false)
+const analysisError = ref(null) // Track error state
 const tasteProfile = ref(null)
 const recommendations = ref([])
 const savedTracks = ref([]) // Favorited tracks
@@ -336,44 +351,41 @@ const checkCurrentPlayback = async () => {
 }
 
 const startAnalysis = async () => {
+  if (isAnalyzing.value) return // Prevent multiple clicks
+  
   isAnalyzing.value = true
   isLoadingRecommendations.value = true
+  analysisError.value = null // Clear previous errors
   
   try {
-    console.log('🎵 Starting analysis (Audio Features API is deprecated)...')
+    console.log('🎵 Starting analysis...')
     
     let tracks = []
     let artists = []
-    let dataSource = 'unknown'
     
-    // Get recently played (most reliable)
+    // Get recently played
     try {
-      console.log('🕐 Checking recently played...')
       const recentResult = await spotifyService.getRecentlyPlayed(50)
       if (recentResult?.items?.length > 0) {
-        const recentTracks = recentResult.items.map(item => item.track).filter(t => t && t.id && !t.is_local)
-        tracks = [...tracks, ...recentTracks]
-        dataSource = 'recently played'
-        console.log(`✓ Found ${recentTracks.length} recent tracks`)
+        tracks = recentResult.items.map(item => item.track).filter(t => t && t.id && !t.is_local)
+        console.log(`✓ Found ${tracks.length} recent tracks`)
       }
     } catch (error) {
       console.log('Recently played failed:', error.response?.status)
     }
     
-    // Try top tracks
+    // Try top tracks if needed
     if (tracks.length < 20) {
       for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
         try {
-          console.log(`📊 Checking ${timeRange} top tracks...`)
           const tracksResult = await spotifyService.getUserTopTracks(timeRange, 30)
           if (tracksResult?.items?.length > 0) {
             tracks = [...tracks, ...tracksResult.items.filter(t => !t.is_local)]
-            dataSource = `top tracks (${timeRange})`
-            console.log(`✓ Found ${tracksResult.items.length} tracks from ${timeRange}`)
+            console.log(`✓ Found ${tracksResult.items.length} from ${timeRange}`)
             break
           }
         } catch (error) {
-          console.log(`${timeRange} not available`)
+          console.log(`${timeRange} unavailable`)
         }
       }
     }
@@ -385,10 +397,9 @@ const startAnalysis = async () => {
         const artistsResult = await spotifyService.getUserTopArtists(timeRange, 15)
         if (artistsResult?.items?.length > 0) {
           artists = [...artists, ...artistsResult.items]
-          console.log(`✓ Found ${artistsResult.items.length} top artists from ${timeRange}`)
         }
       } catch (error) {
-        console.log(`Top artists ${timeRange} unavailable`)
+        // Silent fail, not critical
       }
     }
     
@@ -397,25 +408,23 @@ const startAnalysis = async () => {
       new Map(tracks.filter(t => t && t.id).map(t => [t.id, t])).values()
     ).slice(0, 50)
     
-    console.log(`🎯 Total unique tracks: ${uniqueTracks.length} (from ${dataSource})`)
+    console.log(`🎯 ${uniqueTracks.length} unique tracks found`)
 
     if (uniqueTracks.length === 0) {
-      alert(`😔 No music data found!\n\nQuick start:\n1. Play 5-10 songs on Spotify\n2. Like some songs (❤️)\n3. Wait a few minutes\n4. Try again!`)
-      isAnalyzing.value = false
-      isLoadingRecommendations.value = false
+      analysisError.value = 'No music data found! Play 5-10 songs on Spotify and try again.'
       return
     }
 
-    // Extract artists from tracks if needed
+    // Extract artists if needed
     if (artists.length < 5) {
-      const artistIds = [...new Set(uniqueTracks.flatMap(track => track.artists?.map(a => a.id) || []))].slice(0, 15)
+      const artistIds = [...new Set(uniqueTracks.flatMap(t => t.artists?.map(a => a.id) || []))].slice(0, 15)
       if (artistIds.length > 0) {
         const artistsData = await Promise.all(artistIds.map(id => spotifyService.getArtist(id).catch(() => null)))
         artists = [...artists, ...artistsData.filter(a => a !== null)]
       }
     }
 
-    // Create taste profile WITHOUT audio features (using genre and popularity)
+    // Create taste profile
     const avgPopularity = uniqueTracks.reduce((sum, t) => sum + (t.popularity || 50), 0) / uniqueTracks.length
     const genreCounts = {}
     artists.forEach(artist => {
@@ -426,25 +435,22 @@ const startAnalysis = async () => {
     const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Mixed'
 
     tasteProfile.value = {
-      avgEnergy: 0.6, // Default values since we can't get audio features
-      avgDanceability: 0.6,
-      avgValence: 0.5,
       avgPopularity,
       topGenre,
       tracksAnalyzed: uniqueTracks.length
     }
 
-    console.log('✨ Taste profile (without audio features):', tasteProfile.value)
+    console.log('✨ Taste profile:', tasteProfile.value)
 
     // Get recommendations
     await loadRecommendations()
     
     analysisComplete.value = true
-    console.log(`🎉 Found ${recommendations.value.length} hidden gems!`)
+    console.log(`🎉 Found ${recommendations.value.length} recommendations!`)
     
   } catch (error) {
     console.error('❌ Analysis error:', error)
-    alert(`😕 Error: ${error.message}\n\nTry:\n1. Logout and login again\n2. Play some music\n3. Try again`)
+    analysisError.value = `Analysis failed: ${error.message}. Try logging out and back in.`
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
@@ -453,23 +459,37 @@ const startAnalysis = async () => {
 
 const loadRecommendations = async () => {
   try {
-    // Get seed tracks from top tracks
-    const topTracks = await spotifyService.getUserTopTracks('short_term', 5).catch(() => 
-      spotifyService.getUserTopTracks('long_term', 5)
-    )
+    // Get seed tracks
+    let topTracks
+    try {
+      topTracks = await spotifyService.getUserTopTracks('short_term', 5)
+    } catch (error) {
+      topTracks = await spotifyService.getUserTopTracks('long_term', 5)
+    }
+    
+    if (!topTracks?.items?.length) {
+      console.error('No tracks available for recommendations')
+      return
+    }
+    
     const seedTracks = topTracks.items.slice(0, 3).map(t => t.id)
 
-    // Build parameters WITHOUT audio feature targets (since API is deprecated)
+    // Build parameters
     const params = {
       seed_tracks: seedTracks,
       limit: 20,
       max_popularity: discoveryFilters.value.maxPopularity
     }
 
-    console.log('🎯 Recommendation params:', params)
+    console.log('🎯 Getting recommendations...')
 
     // Request recommendations
     const recs = await spotifyService.getRecommendations(params)
+
+    if (!recs?.tracks) {
+      console.error('No recommendations returned')
+      return
+    }
 
     // Filter by year if needed
     let filteredTracks = recs.tracks
@@ -485,7 +505,7 @@ const loadRecommendations = async () => {
     console.log(`✓ Got ${filteredTracks.length} recommendations`)
   } catch (error) {
     console.error('Error loading recommendations:', error)
-    alert('Failed to load recommendations. Try adjusting filters or analyzing again.')
+    analysisError.value = 'Failed to load recommendations. Try adjusting filters.'
   }
 }
 
