@@ -9,9 +9,14 @@
     "deploy": "vercel --prod"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "axios": "^1.6.8",
+    "d3": "^7.9.0",
     "gsap": "^3.12.5",
+    "idb": "^8.0.3",
+    "natural": "^8.1.0",
     "pinia": "^2.1.7",
+    "sentiment": "^5.0.2",
     "three": "^0.160.1",
     "tone": "^14.7.77",
     "vue": "^3.4.21",
