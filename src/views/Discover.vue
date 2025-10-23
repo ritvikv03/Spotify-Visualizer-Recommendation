@@ -348,120 +348,141 @@ const startAnalysis = async () => {
     
     let tracks = []
     let artists = []
+    let dataSource = 'unknown'
     
-    // Strategy 1: Try all time ranges (fastest, Spotify has this cached)
-    const timeRanges = ['long_term', 'medium_term', 'short_term']
-    
-    for (const timeRange of timeRanges) {
-      if (tracks.length >= 10) break // Got enough data
-      
-      try {
-        console.log(`📊 Checking ${timeRange}...`)
-        const [tracksResult, artistsResult] = await Promise.all([
-          spotifyService.getUserTopTracks(timeRange, 30).catch(() => null),
-          spotifyService.getUserTopArtists(timeRange, 15).catch(() => null)
-        ])
-        
-        if (tracksResult?.items?.length > 0) {
-          tracks = [...tracks, ...tracksResult.items]
-          artists = [...artists, ...(artistsResult?.items || [])]
-          console.log(`✓ Found ${tracksResult.items.length} tracks from ${timeRange}`)
-        }
-      } catch (error) {
-        console.log(`${timeRange} unavailable`)
+    // Strategy 1: Recently played (most reliable, always works)
+    try {
+      console.log('🕐 Checking recently played...')
+      const recentResult = await spotifyService.getRecentlyPlayed(50)
+      if (recentResult?.items?.length > 0) {
+        const recentTracks = recentResult.items.map(item => item.track).filter(t => t && t.id)
+        tracks = [...tracks, ...recentTracks]
+        dataSource = 'recently played'
+        console.log(`✓ Found ${recentTracks.length} recent tracks`)
       }
+    } catch (error) {
+      console.log('Recently played failed:', error.response?.status)
     }
     
-    // Strategy 2: Get user's playlists (public AND private)
-    if (tracks.length < 10) {
-      console.log('📚 Checking your playlists...')
-      try {
-        const playlistsResult = await spotifyService.getUserPlaylists()
-        console.log(`Found ${playlistsResult.items?.length || 0} playlists`)
-        
-        // Get tracks from first few playlists
-        for (const playlist of (playlistsResult.items || []).slice(0, 5)) {
-          if (tracks.length >= 20) break
-          
-          try {
-            const playlistTracks = await spotifyService.getPlaylistTracks(playlist.id, 20)
-            const validTracks = playlistTracks.items
-              .map(item => item.track)
-              .filter(track => track && track.id)
-            
-            tracks = [...tracks, ...validTracks]
-            console.log(`✓ Got ${validTracks.length} tracks from playlist: ${playlist.name}`)
-          } catch (err) {
-            console.log(`Skipping playlist: ${playlist.name}`)
+    // Strategy 2: Try top tracks (may fail with 403 if no data)
+    if (tracks.length < 20) {
+      for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
+        try {
+          console.log(`📊 Checking ${timeRange} top tracks...`)
+          const tracksResult = await spotifyService.getUserTopTracks(timeRange, 30)
+          if (tracksResult?.items?.length > 0) {
+            tracks = [...tracks, ...tracksResult.items]
+            dataSource = `top tracks (${timeRange})`
+            console.log(`✓ Found ${tracksResult.items.length} tracks from ${timeRange}`)
+            break
           }
+        } catch (error) {
+          console.log(`${timeRange} not available (${error.response?.status})`)
         }
-      } catch (error) {
-        console.log('Playlists unavailable:', error)
       }
     }
     
     // Strategy 3: Liked/Saved tracks
     if (tracks.length < 10) {
-      console.log('💚 Checking liked songs...')
       try {
+        console.log('💚 Checking liked songs...')
         const savedResult = await spotifyService.getSavedTracks(50)
         if (savedResult?.items?.length > 0) {
-          const savedTracks = savedResult.items.map(item => item.track).filter(t => t)
+          const savedTracks = savedResult.items.map(item => item.track).filter(t => t && t.id)
           tracks = [...tracks, ...savedTracks]
+          dataSource = 'liked songs'
           console.log(`✓ Found ${savedTracks.length} liked songs`)
         }
       } catch (error) {
-        console.log('Saved tracks unavailable')
+        console.log('Saved tracks failed:', error.response?.status)
       }
     }
     
-    // Strategy 4: Recently played
+    // Strategy 4: User's playlists
     if (tracks.length < 10) {
-      console.log('🕐 Checking recently played...')
       try {
-        const recentResult = await spotifyService.getRecentlyPlayed(50)
-        if (recentResult?.items?.length > 0) {
-          const recentTracks = recentResult.items.map(item => item.track).filter(t => t)
-          tracks = [...tracks, ...recentTracks]
-          console.log(`✓ Found ${recentTracks.length} recent tracks`)
+        console.log('📚 Checking your playlists...')
+        const playlistsResult = await spotifyService.getUserPlaylists()
+        
+        for (const playlist of (playlistsResult.items || []).slice(0, 3)) {
+          if (tracks.length >= 30) break
+          
+          try {
+            const playlistTracks = await spotifyService.getPlaylistTracks(playlist.id, 30)
+            const validTracks = playlistTracks.items
+              .map(item => item.track)
+              .filter(track => track && track.id)
+            
+            tracks = [...tracks, ...validTracks]
+            dataSource = 'playlists'
+            console.log(`✓ Got ${validTracks.length} tracks from: ${playlist.name}`)
+          } catch (err) {
+            console.log(`Playlist "${playlist.name}" unavailable`)
+          }
         }
       } catch (error) {
-        console.log('Recently played unavailable')
+        console.log('Playlists failed:', error.response?.status)
       }
     }
     
     // Remove duplicates
     const uniqueTracks = Array.from(
-      new Map(tracks.map(t => [t.id, t])).values()
+      new Map(tracks.filter(t => t && t.id).map(t => [t.id, t])).values()
     ).slice(0, 50)
     
-    console.log(`🎯 Total unique tracks found: ${uniqueTracks.length}`)
+    console.log(`🎯 Total unique tracks found: ${uniqueTracks.length} (from ${dataSource})`)
 
     if (uniqueTracks.length === 0) {
-      alert('😔 No music data found!\n\n✨ Quick fixes:\n1. Like some songs on Spotify (❤️ button)\n2. Listen to a few songs\n3. Create or follow a playlist\n4. Come back and try again!\n\nYour Spotify account needs some activity to generate recommendations.')
+      alert(`😔 No music data found!\n\n✨ Quick start:\n\n1. Open Spotify and play 5-10 songs\n2. Like a few songs (❤️ button)\n3. Wait 2-3 minutes\n4. Come back and click Analyze!\n\nSpotify needs some activity before we can generate recommendations.`)
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
     }
 
-    // Extract artists from tracks if we don't have enough
-    if (artists.length < 5) {
-      const artistIds = [...new Set(
-        uniqueTracks.flatMap(track => track.artists.map(a => a.id))
-      )].slice(0, 15)
-      
-      const artistsData = await Promise.all(
-        artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
-      )
-      artists = [...artists, ...artistsData.filter(a => a !== null)]
+    // Try to get top artists (optional, won't fail if unavailable)
+    for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
+      try {
+        const artistsResult = await spotifyService.getUserTopArtists(timeRange, 15)
+        if (artistsResult?.items?.length > 0) {
+          artists = artistsResult.items
+          console.log(`✓ Found ${artists.length} top artists from ${timeRange}`)
+          break
+        }
+      } catch (error) {
+        console.log(`Top artists ${timeRange} unavailable`)
+      }
     }
 
-    console.log(`🎸 Total artists: ${artists.length}`)
+    // Extract artists from tracks if we don't have top artists
+    if (artists.length < 5) {
+      console.log('📝 Extracting artists from tracks...')
+      const artistIds = [...new Set(
+        uniqueTracks.flatMap(track => track.artists?.map(a => a.id) || [])
+      )].filter(id => id).slice(0, 15)
+      
+      if (artistIds.length > 0) {
+        const artistsData = await Promise.all(
+          artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
+        )
+        artists = artistsData.filter(a => a !== null)
+        console.log(`✓ Extracted ${artists.length} artists`)
+      }
+    }
 
     // Get audio features
     const trackIds = uniqueTracks.map(t => t.id).filter(id => id)
     console.log('🎼 Analyzing audio features...')
-    const audioFeatures = await spotifyService.getAudioFeatures(trackIds)
+    
+    let audioFeatures
+    try {
+      audioFeatures = await spotifyService.getAudioFeatures(trackIds)
+    } catch (error) {
+      console.error('Audio features failed:', error)
+      alert('Failed to analyze audio features. Please try again!')
+      isAnalyzing.value = false
+      isLoadingRecommendations.value = false
+      return
+    }
 
     // Calculate taste profile
     const features = audioFeatures.audio_features.filter(f => f !== null)
@@ -488,14 +509,15 @@ const startAnalysis = async () => {
     analysisComplete.value = true
     console.log(`🎉 Analysis complete! Found ${recommendations.value.length} hidden gems!`)
     
-    // Success message
-    if (uniqueTracks.length < 20) {
-      alert(`✅ Analysis complete!\n\nUsed ${uniqueTracks.length} tracks from your Spotify.\n\n💡 Tip: The more you use Spotify, the better the recommendations get!`)
-    }
   } catch (error) {
     console.error('❌ Analysis error:', error)
     console.error('Error details:', error.response?.data || error.message)
-    alert(`😕 Something went wrong!\n\nError: ${error.message}\n\nTry:\n1. Logging out and back in\n2. Making sure you have some liked songs\n3. Checking the console for details`)
+    
+    const errorMsg = error.response?.status === 403 
+      ? `🔒 Permission Error\n\nPlease:\n1. Click "Logout"\n2. Log back in\n3. Accept all permissions\n4. Try analyzing again!\n\nWe need access to your Spotify data to generate recommendations.`
+      : `😕 Something went wrong!\n\nError: ${error.message}\n\nTry:\n1. Logging out and back in\n2. Playing some music on Spotify\n3. Checking the console for details`
+    
+    alert(errorMsg)
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
