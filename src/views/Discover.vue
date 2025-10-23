@@ -517,7 +517,17 @@ const startAnalysis = async () => {
     
   } catch (error) {
     console.error('❌ Analysis error:', error)
-    analysisError.value = `Analysis failed: ${error.message}`
+
+    // Enhanced error messaging based on error type
+    if (error.response?.status === 403) {
+      analysisError.value = `🔒 Access Denied: This app is in Development Mode. Please ask the developer to add your Spotify account to the app's allowlist in the Spotify Developer Dashboard, or try logging in with a different account that has been approved.`
+    } else if (error.isDeprecatedEndpoint) {
+      analysisError.value = `⚠️ ${error.message} Your analysis is using an alternative recommendation algorithm.`
+    } else if (error.message.includes('No music data found')) {
+      analysisError.value = error.message
+    } else {
+      analysisError.value = `Analysis failed: ${error.message}. Check console for details.`
+    }
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
@@ -561,7 +571,15 @@ const loadRecommendations = async () => {
     console.log(`✓ Added ${newTracks.length} more recommendations`)
   } catch (error) {
     console.error('Error loading more recommendations:', error)
-    analysisError.value = 'Failed to load more. Try adjusting filters.'
+
+    // Enhanced error messaging
+    if (error.response?.status === 403) {
+      analysisError.value = `🔒 Access Denied: Unable to load more recommendations. Your account may not be approved for this app. Ask the developer to add you to the allowlist.`
+    } else if (error.isDeprecatedEndpoint) {
+      analysisError.value = 'Using alternative recommendation algorithm. Results may be limited.'
+    } else {
+      analysisError.value = 'Failed to load more. Try adjusting filters or analyzing again.'
+    }
   } finally {
     isLoadingRecommendations.value = false
   }

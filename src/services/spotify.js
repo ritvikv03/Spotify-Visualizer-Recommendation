@@ -22,16 +22,16 @@ spotifyApi.interceptors.request.use(
   }
 )
 
-// Handle token refresh on 401 errors
+// Handle token refresh on 401 errors and enhanced 403 error handling
 spotifyApi.interceptors.response.use(
   (response) => response,
   async (error) => {
     const authStore = useAuthStore()
-    
+
     if (error.response?.status === 401) {
       // Token expired, try to refresh
       const refreshed = await authStore.refreshAccessToken()
-      
+
       if (refreshed) {
         // Retry the original request
         error.config.headers.Authorization = `Bearer ${authStore.accessToken}`
@@ -42,7 +42,39 @@ spotifyApi.interceptors.response.use(
         window.location.href = '/'
       }
     }
-    
+
+    // Enhanced 403 error handling
+    if (error.response?.status === 403) {
+      console.error('⛔ 403 Forbidden Error Detected')
+      console.error('Endpoint:', error.config?.url)
+      console.error('Method:', error.config?.method?.toUpperCase())
+      console.error('Response body:', error.response?.data || 'Empty (typical for 403 errors)')
+
+      // Check if recommendations endpoint (deprecated as of Nov 27, 2024)
+      if (error.config?.url?.includes('recommendations')) {
+        const customError = new Error('Spotify Recommendations endpoint is no longer available for new apps. Using alternative recommendation algorithm.')
+        customError.isDeprecatedEndpoint = true
+        customError.originalError = error
+        return Promise.reject(customError)
+      }
+
+      // Check if audio-features endpoint (also deprecated)
+      if (error.config?.url?.includes('audio-features')) {
+        const customError = new Error('Audio Features endpoint is no longer available. This feature has been disabled.')
+        customError.isDeprecatedEndpoint = true
+        customError.originalError = error
+        return Promise.reject(customError)
+      }
+
+      // Generic 403 guidance
+      console.error('📋 Common 403 Causes:')
+      console.error('1. User not added to Developer Dashboard allowlist (Development Mode)')
+      console.error('2. Endpoint deprecated/unavailable for new apps')
+      console.error('3. Insufficient OAuth scopes')
+      console.error('4. App not in Extended Quota Mode')
+      console.error('\n💡 Solution: Add users to your app allowlist at https://developer.spotify.com/dashboard')
+    }
+
     return Promise.reject(error)
   }
 )
