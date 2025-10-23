@@ -100,17 +100,6 @@ export default {
     }
   },
 
-  // Get detailed audio analysis for a track (includes beats, bars, sections)
-  async getAudioAnalysis(trackId) {
-    try {
-      const response = await spotifyApi.get(`/audio-analysis/${trackId}`)
-      return response.data
-    } catch (error) {
-      console.error('Error fetching audio analysis:', error)
-      throw error
-    }
-  },
-
   // Get recommendations based on seed data
   async getRecommendations(params) {
     try {
@@ -243,6 +232,34 @@ export default {
       return response.data
     } catch (error) {
       console.error('Error fetching devices:', error)
+      throw error
+    }
+  },
+
+  // Create a new playlist
+  async createPlaylist(userId, name, description = '', isPublic = true) {
+    try {
+      const response = await spotifyApi.post(`/users/${userId}/playlists`, {
+        name,
+        description,
+        public: isPublic
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error creating playlist:', error)
+      throw error
+    }
+  },
+
+  // Add tracks to playlist
+  async addTracksToPlaylist(playlistId, trackUris) {
+    try {
+      const response = await spotifyApi.post(`/playlists/${playlistId}/tracks`, {
+        uris: trackUris
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error adding tracks to playlist:', error)
       throw error
     }
   }
