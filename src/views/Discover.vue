@@ -24,7 +24,7 @@
                   color: themeStore.currentTheme === 'neon' || themeStore.currentTheme === 'ocean' ? '#000' : '#fff'
                 }"
               >
-                <span>🎨 Theme</span>
+                <span> Theme</span>
                 <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': showThemeMenu }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
@@ -75,7 +75,7 @@
           <!-- Visualizer Card -->
           <div class="card">
             <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
-               Music Cosmos
+              🌌 Music Cosmos
               <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green">(Live)</span>
             </h2>
             <CosmicVisualizer 
@@ -163,7 +163,7 @@
           <!-- Discovery Queue -->
           <div class="card">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-               Hidden Gems
+              💎 Hidden Gems
               <span class="text-sm font-normal text-gray-400">({{ recommendations.length }})</span>
             </h3>
             
@@ -343,41 +343,75 @@ const startAnalysis = async () => {
   try {
     console.log('Starting analysis...')
     
-    // Try different time ranges as fallback
     let topTracks = null
     let topArtists = null
     
-    // Try short_term first (last 4 weeks)
-    try {
-      console.log('Trying short_term...')
-      topTracks = await spotifyService.getUserTopTracks('short_term', 20)
-      topArtists = await spotifyService.getUserTopArtists('short_term', 10)
-    } catch (error) {
-      console.log('short_term failed, trying medium_term...', error)
-      // Fallback to medium_term (last 6 months)
+    // Try all time ranges, starting with the longest (most likely to have data)
+    const timeRanges = ['long_term', 'medium_term', 'short_term']
+    
+    for (const timeRange of timeRanges) {
       try {
-        topTracks = await spotifyService.getUserTopTracks('medium_term', 20)
-        topArtists = await spotifyService.getUserTopArtists('medium_term', 10)
-      } catch (error2) {
-        console.log('medium_term failed, trying long_term...', error2)
-        // Last resort: long_term (all time)
-        topTracks = await spotifyService.getUserTopTracks('long_term', 20)
-        topArtists = await spotifyService.getUserTopArtists('long_term', 10)
+        console.log(`Trying ${timeRange}...`)
+        const [tracksResult, artistsResult] = await Promise.all([
+          spotifyService.getUserTopTracks(timeRange, 20),
+          spotifyService.getUserTopArtists(timeRange, 10)
+        ])
+        
+        if (tracksResult?.items?.length > 0) {
+          topTracks = tracksResult
+          topArtists = artistsResult
+          console.log(`✓ Found data in ${timeRange}:`, topTracks.items.length, 'tracks')
+          break
+        }
+      } catch (error) {
+        console.log(`${timeRange} failed, trying next...`)
+      }
+    }
+    
+    // If still no data, try getting saved tracks (liked songs)
+    if (!topTracks?.items?.length) {
+      console.log('No top tracks found, trying saved tracks...')
+      try {
+        const savedTracksResult = await spotifyService.getSavedTracks(20)
+        if (savedTracksResult?.items?.length > 0) {
+          topTracks = {
+            items: savedTracksResult.items.map(item => item.track)
+          }
+          console.log('✓ Using saved tracks:', topTracks.items.length)
+          
+          // Get artists from saved tracks
+          const artistIds = [...new Set(
+            topTracks.items.flatMap(track => 
+              track.artists.map(a => a.id)
+            )
+          )].slice(0, 10)
+          
+          if (artistIds.length > 0) {
+            const artistsData = await Promise.all(
+              artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
+            )
+            topArtists = {
+              items: artistsData.filter(a => a !== null)
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Saved tracks also failed:', error)
       }
     }
 
-    console.log('Got top tracks:', topTracks?.items?.length || 0)
-    console.log('Got top artists:', topArtists?.items?.length || 0)
+    console.log('Final top tracks:', topTracks?.items?.length || 0)
+    console.log('Final top artists:', topArtists?.items?.length || 0)
 
     if (!topTracks?.items?.length) {
-      alert('No listening history found! Play some music on Spotify first, then try again in a few minutes.')
+      alert('No listening history found!\n\nPlease:\n1. Listen to some songs on Spotify\n2. Like some songs (heart icon)\n3. Wait a few minutes\n4. Try again!')
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
     }
 
     // Get audio features
-    const trackIds = topTracks.items.map(t => t.id)
+    const trackIds = topTracks.items.map(t => t.id).filter(id => id)
     console.log('Fetching audio features for', trackIds.length, 'tracks...')
     const audioFeatures = await spotifyService.getAudioFeatures(trackIds)
 
@@ -397,7 +431,7 @@ const startAnalysis = async () => {
       avgEnergy: features.reduce((sum, f) => sum + f.energy, 0) / features.length,
       avgDanceability: features.reduce((sum, f) => sum + f.danceability, 0) / features.length,
       avgValence: features.reduce((sum, f) => sum + f.valence, 0) / features.length,
-      topGenre: topArtists.items[0]?.genres?.[0] || 'Mixed'
+      topGenre: topArtists?.items?.[0]?.genres?.[0] || 'Mixed'
     }
 
     console.log('Taste profile:', tasteProfile.value)

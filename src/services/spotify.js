@@ -87,6 +87,19 @@ export default {
     }
   },
 
+  // Get user's saved (liked) tracks
+  async getSavedTracks(limit = 50) {
+    try {
+      const response = await spotifyApi.get('/me/tracks', {
+        params: { limit }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error fetching saved tracks:', error)
+      throw error
+    }
+  },
+
   // Get audio features for multiple tracks
   async getAudioFeatures(trackIds) {
     try {
