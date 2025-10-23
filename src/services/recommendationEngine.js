@@ -144,7 +144,70 @@ export class RecommendationEngine {
   }
 
   /**
+   * Fallback: Generate recommendations from user's library
+   * Used when Spotify recommendations endpoint is unavailable
+   */
+  static async generateFromLibrary(spotifyService, tracks, artists, analysis, filters = {}) {
+    console.log('🔄 Using fallback: generating recommendations from library')
+
+    try {
+      // Get user's saved tracks (these are tracks they've liked but might not listen to often)
+      const savedTracksData = await spotifyService.getSavedTracks(50).catch(() => ({ items: [] }))
+      const savedTracks = savedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
+
+      // Combine with top tracks
+      const allAvailableTracks = [...tracks, ...savedTracks]
+
+      // Deduplicate
+      const uniqueTracks = Array.from(
+        new Map(allAvailableTracks.filter(t => t && t.id).map(t => [t.id, t])).values()
+      )
+
+      console.log(`📚 Found ${uniqueTracks.length} tracks in library to analyze`)
+
+      // Find "hidden gems" - lower popularity tracks from favorite genres/artists
+      const hiddenGems = uniqueTracks.filter(track => {
+        // Must be less popular than user's average
+        if (track.popularity >= analysis.avgPopularity) return false
+
+        // Must match user's genres or artists
+        const trackArtistGenres = track.artists?.flatMap(a => a.genres || []) || []
+        const genreMatch = trackArtistGenres.some(g => analysis.recentTrends.includes(g))
+        const artistMatch = track.artists?.some(a => analysis.artistFrequency[a.id])
+
+        return genreMatch || artistMatch
+      })
+
+      // If we found hidden gems, use those
+      if (hiddenGems.length > 0) {
+        const scored = this.scoreRecommendations(hiddenGems, analysis)
+        console.log(`💎 Found ${scored.length} hidden gems from library`)
+        return scored.slice(0, 20) // Limit to 20
+      }
+
+      // Fallback: just use lower popularity tracks
+      const lowerPopularity = uniqueTracks
+        .filter(t => t.popularity < analysis.avgPopularity)
+        .sort((a, b) => b.popularity - a.popularity)
+        .slice(0, 20)
+
+      const scored = this.scoreRecommendations(lowerPopularity, analysis)
+      console.log(`📊 Using ${scored.length} tracks from library`)
+      return scored
+
+    } catch (error) {
+      console.error('❌ Fallback recommendation error:', error)
+      // Last resort: return random selection of lower popularity tracks
+      return tracks
+        .filter(t => t.popularity < 60)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 20)
+    }
+  }
+
+  /**
    * Generate personalized recommendations
+   * Tries Spotify API first, falls back to library-based algorithm if unavailable
    */
   static async generateRecommendations(spotifyService, tracks, artists, filters = {}) {
     try {
@@ -160,15 +223,32 @@ export class RecommendationEngine {
       const params = this.buildRecommendationParams(seeds, analysis, filters)
       console.log('🎯 Recommendation params:', params)
 
-      // Step 4: Get recommendations from Spotify
-      const response = await spotifyService.getRecommendations(params)
+      let recommendedTracks = []
 
-      if (!response?.tracks) {
-        throw new Error('No recommendations returned from Spotify')
+      try {
+        // Step 4: Try to get recommendations from Spotify API
+        const response = await spotifyService.getRecommendations(params)
+
+        if (!response?.tracks) {
+          throw new Error('No recommendations returned from Spotify')
+        }
+
+        recommendedTracks = response.tracks
+        console.log('✅ Got recommendations from Spotify API')
+
+      } catch (apiError) {
+        // Check if it's the deprecated endpoint error
+        if (apiError.isDeprecatedEndpoint || apiError.response?.status === 403) {
+          console.log('⚠️ Spotify recommendations endpoint unavailable, using fallback algorithm')
+          recommendedTracks = await this.generateFromLibrary(spotifyService, tracks, artists, analysis, filters)
+        } else {
+          // Different error, rethrow
+          throw apiError
+        }
       }
 
       // Step 5: Score and rank recommendations
-      const scored = this.scoreRecommendations(response.tracks, analysis)
+      const scored = this.scoreRecommendations(recommendedTracks, analysis)
       console.log('⭐ Scored recommendations:', scored.length)
 
       return {

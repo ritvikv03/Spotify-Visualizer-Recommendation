@@ -74,6 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
         code_challenge_method: 'S256',
         code_challenge: codeChallenge,
         redirect_uri: redirectUri,
+        show_dialog: 'true', // Force consent screen to ensure all scopes are granted
       }
 
       authUrl.search = new URLSearchParams(params).toString()
