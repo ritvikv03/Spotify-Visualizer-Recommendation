@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-      🎛️ Discovery Filters
+       Discovery Filters
       <button @click="resetFilters" class="text-xs text-gray-400 hover:text-white ml-auto">
         Reset All
       </button>

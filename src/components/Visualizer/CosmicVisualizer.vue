@@ -6,7 +6,7 @@
     <!-- Controls Overlay -->
     <div class="absolute top-4 left-4 z-10 space-y-2">
       <div class="glass-effect px-4 py-2 rounded-lg">
-        <h3 class="text-sm font-bold mb-2 text-spotify-green">🌌 Cosmic Mode</h3>
+        <h3 class="text-sm font-bold mb-2 text-spotify-green"> Cosmic Mode</h3>
         <div class="flex flex-col gap-2">
           <button 
             v-for="mode in visualizerModes" 

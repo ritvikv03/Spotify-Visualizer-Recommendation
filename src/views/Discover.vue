@@ -75,7 +75,7 @@
           <!-- Visualizer Card -->
           <div class="card">
             <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
-              🌌 Music Cosmos
+               Music Cosmos
               <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green">(Live)</span>
             </h2>
             <CosmicVisualizer 
@@ -163,7 +163,7 @@
           <!-- Discovery Queue -->
           <div class="card">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-              💎 Hidden Gems
+               Hidden Gems
               <span class="text-sm font-normal text-gray-400">({{ recommendations.length }})</span>
             </h3>
             
