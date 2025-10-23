@@ -19,12 +19,12 @@
               <button
                 @click="showThemeMenu = !showThemeMenu"
                 class="btn-secondary text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 flex items-center gap-1 sm:gap-2 font-semibold whitespace-nowrap"
-                :style="{ 
+                :style="{
                   backgroundColor: themeStore.themes[themeStore.currentTheme].primary,
                   color: themeStore.currentTheme === 'neon' || themeStore.currentTheme === 'ocean' ? '#000' : '#fff'
                 }"
               >
-                <span class="hidden sm:inline">🎨</span>
+                <IconPalette :size="16" class="hidden sm:inline" />
                 <span>Theme</span>
                 <svg class="w-3 h-3 sm:w-4 sm:h-4 transition-transform" :class="{ 'rotate-180': showThemeMenu }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -41,13 +41,15 @@
                   :key="key"
                   @click="themeStore.currentTheme = key; showThemeMenu = false"
                   class="w-full px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm hover:bg-opacity-80 transition-colors flex items-center gap-2 sm:gap-3"
-                  :style="{ 
+                  :style="{
                     backgroundColor: theme.primary,
                     color: key === 'neon' || key === 'ocean' ? '#000' : '#fff'
                   }"
                 >
-                  <span v-if="themeStore.currentTheme === key" class="text-base sm:text-lg">✓</span>
-                  <span v-else class="text-base sm:text-lg opacity-0">✓</span>
+                  <svg v-if="themeStore.currentTheme === key" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  <span v-else class="w-4 h-4"></span>
                   <span class="font-semibold">{{ theme.name }}</span>
                 </button>
               </div>
@@ -56,11 +58,12 @@
             <button
               @click="isAnalyzing ? stopAnalysis() : startAnalysis()"
               :class="isAnalyzing ? 'btn-secondary' : 'btn-primary'"
-              class="text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap"
+              class="text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap flex items-center gap-2"
               :disabled="isAnalyzing"
             >
-              <span class="hidden sm:inline">{{ isAnalyzing ? '⏳ Analyzing...' : '✨ Analyze My Taste' }}</span>
-              <span class="sm:hidden">{{ isAnalyzing ? '⏳' : '✨' }}</span>
+              <IconAnalyze :size="16" :class="{ 'animate-spin': isAnalyzing }" />
+              <span class="hidden sm:inline">{{ isAnalyzing ? 'Analyzing...' : 'Analyze My Taste' }}</span>
+              <span class="sm:hidden">{{ isAnalyzing ? 'Scan' : 'Analyze' }}</span>
             </button>
             <button @click="handleLogout" class="btn-secondary text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap">
               <span class="hidden sm:inline">Logout</span>
@@ -78,12 +81,19 @@
         <div class="lg:col-span-2 space-y-4 md:space-y-6">
           <!-- Visualizer Card -->
           <div class="card">
-            <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
-              🌌 Your Music Universe
-              <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green animate-pulse">(🎵 Live Audio)</span>
-              <span v-else-if="analysisComplete" class="text-xs md:text-sm font-normal text-cyan-400">(✨ Visualized)</span>
+            <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-3">
+              <IconMusic :size="28" color="#1DB954" />
+              <span>Your Music Universe</span>
+              <span v-if="isPlaying" class="text-xs md:text-sm font-normal text-spotify-green animate-pulse flex items-center gap-1">
+                <span class="w-2 h-2 bg-spotify-green rounded-full animate-pulse"></span>
+                Live Audio
+              </span>
+              <span v-else-if="analysisComplete" class="text-xs md:text-sm font-normal text-cyan-400 flex items-center gap-1">
+                <span class="w-2 h-2 bg-cyan-400 rounded-full"></span>
+                Visualized
+              </span>
             </h2>
-            <CosmicVisualizer
+            <MusicVisualizer
               :is-playing="isPlaying"
               :is-analyzed="analysisComplete"
               :tracks="recommendations"
@@ -96,7 +106,9 @@
           <!-- Error Message -->
           <div v-if="analysisError" class="card bg-red-900 bg-opacity-30 border border-red-500">
             <div class="flex items-start gap-3">
-              <span class="text-2xl">⚠️</span>
+              <svg class="w-6 h-6 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
               <div class="flex-1">
                 <h3 class="font-semibold text-red-400 mb-2">Analysis Error</h3>
                 <p class="text-sm text-gray-300">{{ analysisError }}</p>
@@ -110,7 +122,7 @@
           <!-- Now Playing Card -->
           <div v-if="currentTrack" class="card border border-spotify-green/30">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-              <span class="text-spotify-green animate-pulse">♫</span>
+              <IconMusic :size="24" color="#1DB954" class="animate-pulse" />
               Now Playing
             </h3>
             <div class="flex items-center gap-4">
@@ -157,24 +169,27 @@
 
           <!-- Analysis Results -->
           <div v-if="analysisComplete && tasteProfile" class="card bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/20">
-            <h3 class="text-xl font-semibold mb-4">✨ Your Musical Identity</h3>
+            <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
+              <IconAnalyze :size="24" color="#a855f7" />
+              Your Musical Identity
+            </h3>
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
                 <p class="text-sm text-gray-400">Popularity Index</p>
                 <p class="text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-400 bg-clip-text text-transparent">{{ tasteProfile.avgPopularity.toFixed(0) }}%</p>
                 <p class="text-xs text-cyan-400 mt-1">
-                  {{ tasteProfile.avgPopularity > 70 ? '🔥 Chart Chaser' :
-                     tasteProfile.avgPopularity > 50 ? '🎵 Balanced Listener' :
-                     '💎 Underground Explorer' }}
+                  {{ tasteProfile.avgPopularity > 70 ? 'Chart Chaser' :
+                     tasteProfile.avgPopularity > 50 ? 'Balanced Listener' :
+                     'Underground Explorer' }}
                 </p>
               </div>
               <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
                 <p class="text-sm text-gray-400">Taste Diversity</p>
                 <p class="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">{{ (tasteProfile.diversityScore * 100).toFixed(0) }}%</p>
                 <p class="text-xs text-pink-400 mt-1">
-                  {{ tasteProfile.diversityScore > 0.75 ? '🌈 Eclectic Adventurer' :
-                     tasteProfile.diversityScore > 0.5 ? '🎨 Genre Hopper' :
-                     '🎯 Genre Specialist' }}
+                  {{ tasteProfile.diversityScore > 0.75 ? 'Eclectic Adventurer' :
+                     tasteProfile.diversityScore > 0.5 ? 'Genre Hopper' :
+                     'Genre Specialist' }}
                 </p>
               </div>
               <div class="bg-black/40 p-4 rounded-lg backdrop-blur-sm border border-purple-500/10">
@@ -187,7 +202,10 @@
               </div>
             </div>
             <div v-if="tasteProfile.topGenres" class="mt-4 pt-4 border-t border-purple-500/20">
-              <p class="text-sm text-gray-400 mb-3">🎼 Your Genre Palette:</p>
+              <p class="text-sm text-gray-400 mb-3 flex items-center gap-2">
+                <IconMusic :size="16" color="#a855f7" />
+                Your Genre Palette
+              </p>
               <div class="flex flex-wrap gap-2">
                 <span
                   v-for="genre in tasteProfile.topGenres"
@@ -209,19 +227,20 @@
           <!-- Discovery Queue -->
           <div class="card border border-cyan-500/20">
             <h3 class="text-xl font-semibold mb-4 flex items-center gap-2">
-              💎 Your Hidden Gems
+              <IconGem :size="24" color="#22d3ee" />
+              <span>Your Hidden Gems</span>
               <span class="text-sm font-normal text-cyan-400">({{ recommendations.length }})</span>
             </h3>
             
             <div v-if="isLoadingRecommendations" class="text-center py-8">
               <div class="animate-spin w-8 h-8 border-4 border-spotify-green border-t-transparent rounded-full mx-auto"></div>
-              <p class="text-gray-400 mt-4">✨ Discovering your perfect tracks...</p>
+              <p class="text-gray-400 mt-4">Discovering your perfect tracks...</p>
             </div>
 
             <div v-else-if="recommendations.length === 0" class="text-center py-8">
-              <div class="text-6xl mb-4">🎵</div>
+              <IconMusic :size="64" color="#1DB954" class="mx-auto mb-4 opacity-50" />
               <p class="text-lg font-semibold mb-2">Ready to Discover?</p>
-              <p class="text-gray-400 text-sm">Click "✨ Analyze My Taste" above to unlock personalized hidden gems based on your music profile!</p>
+              <p class="text-gray-400 text-sm">Click "Analyze My Taste" above to unlock personalized hidden gems based on your music profile!</p>
             </div>
 
             <div v-else class="space-y-3 max-h-[600px] overflow-y-auto">
@@ -245,13 +264,15 @@
                   <div class="flex items-center gap-2">
                     <button
                       @click="toggleFavorite(track)"
-                      class="text-2xl hover:scale-125 transition-transform"
+                      class="hover:scale-125 transition-transform"
                       :title="isFavorited(track) ? 'Remove from favorites' : 'Add to favorites'"
                     >
-                      {{ isFavorited(track) ? '❤️' : '🤍' }}
+                      <svg :class="isFavorited(track) ? 'text-red-500 fill-current' : 'text-gray-400'" class="w-5 h-5" viewBox="0 0 24 24" :fill="isFavorited(track) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
                     </button>
                     <div class="text-xs text-spotify-green">
-                      {{ track.popularity }}% 
+                      {{ track.popularity }}%
                     </div>
                   </div>
                 </div>
@@ -261,11 +282,18 @@
             <button
               v-if="analysisComplete && recommendations.length > 0"
               @click="loadMoreRecommendations"
-              class="btn-secondary w-full mt-4"
+              class="btn-secondary w-full mt-4 flex items-center justify-center gap-2"
               :disabled="isLoadingRecommendations"
             >
-              <span v-if="!isLoadingRecommendations">🔍 Discover More Gems</span>
-              <span v-else>⏳ Searching...</span>
+              <svg v-if="!isLoadingRecommendations" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8" stroke-width="2"/>
+                <path d="M21 21l-4.35-4.35" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+              </svg>
+              <span>{{ isLoadingRecommendations ? 'Searching...' : 'Discover More Gems' }}</span>
             </button>
 
             <button
@@ -274,8 +302,12 @@
               class="btn-primary w-full mt-2 flex items-center justify-center gap-2"
               :disabled="isSavingPlaylist"
             >
-              <span v-if="!isSavingPlaylist">💾 Save {{ savedTracks.length }} {{ savedTracks.length === 1 ? 'Track' : 'Tracks' }} to Spotify</span>
-              <span v-else>✨ Creating Playlist...</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="17 21 17 13 7 13 7 21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="7 3 7 8 15 8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>{{ isSavingPlaylist ? 'Creating Playlist...' : `Save ${savedTracks.length} ${savedTracks.length === 1 ? 'Track' : 'Tracks'} to Spotify` }}</span>
             </button>
           </div>
         </div>
@@ -291,8 +323,12 @@ import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import spotifyService from '../services/spotify'
 import RecommendationEngine from '../services/recommendationEngine'
-import CosmicVisualizer from '../components/Visualizer/CosmicVisualizer.vue'
+import MusicVisualizer from '../components/Visualizer/MusicVisualizer.vue'
 import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
+import IconPalette from '../components/icons/IconPalette.vue'
+import IconAnalyze from '../components/icons/IconAnalyze.vue'
+import IconMusic from '../components/icons/IconMusic.vue'
+import IconGem from '../components/icons/IconGem.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

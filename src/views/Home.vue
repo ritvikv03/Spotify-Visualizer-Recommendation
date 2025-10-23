@@ -17,23 +17,29 @@
       <!-- Feature Cards -->
       <div class="grid md:grid-cols-3 gap-6 mb-12">
         <div class="card text-center transform hover:scale-105 transition-transform">
-          <div class="text-5xl mb-4">🎵</div>
+          <div class="flex justify-center mb-4">
+            <IconMusic :size="56" color="#1DB954" />
+          </div>
           <h3 class="text-xl font-semibold mb-2">Smart Discovery</h3>
           <p class="text-gray-400 text-sm">
             AI-powered recommendations that find artists under the radar
           </p>
         </div>
-        
+
         <div class="card text-center transform hover:scale-105 transition-transform">
-          <div class="text-5xl mb-4">🌊</div>
+          <div class="flex justify-center mb-4">
+            <IconWave :size="56" color="#1DB954" />
+          </div>
           <h3 class="text-xl font-semibold mb-2">Live Visualizer</h3>
           <p class="text-gray-400 text-sm">
             Dynamic waveforms that dance to your music in real-time
           </p>
         </div>
-        
+
         <div class="card text-center transform hover:scale-105 transition-transform">
-          <div class="text-5xl mb-4">💎</div>
+          <div class="flex justify-center mb-4">
+            <IconGem :size="56" color="#1DB954" />
+          </div>
           <h3 class="text-xl font-semibold mb-2">Hidden Talent</h3>
           <p class="text-gray-400 text-sm">
             Support emerging artists and expand your musical horizons
@@ -68,19 +74,27 @@
         <h3 class="text-2xl font-semibold mb-6 text-center">What You'll Get</h3>
         <div class="grid md:grid-cols-2 gap-4 text-gray-300">
           <div class="flex items-start gap-3">
-            <span class="text-spotify-green text-xl">✓</span>
+            <svg class="w-6 h-6 text-spotify-green flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
             <span>Personalized recommendations based on your listening history</span>
           </div>
           <div class="flex items-start gap-3">
-            <span class="text-spotify-green text-xl">✓</span>
+            <svg class="w-6 h-6 text-spotify-green flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
             <span>Focus on artists with less than 50% popularity</span>
           </div>
           <div class="flex items-start gap-3">
-            <span class="text-spotify-green text-xl">✓</span>
+            <svg class="w-6 h-6 text-spotify-green flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
             <span>Real-time audio waveform visualizations</span>
           </div>
           <div class="flex items-start gap-3">
-            <span class="text-spotify-green text-xl">✓</span>
+            <svg class="w-6 h-6 text-spotify-green flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
             <span>Deep analysis of audio features and patterns</span>
           </div>
         </div>
@@ -92,6 +106,9 @@
 <script setup>
 import { ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import IconMusic from '../components/icons/IconMusic.vue'
+import IconWave from '../components/icons/IconWave.vue'
+import IconGem from '../components/icons/IconGem.vue'
 
 const authStore = useAuthStore()
 const isLoading = ref(false)
