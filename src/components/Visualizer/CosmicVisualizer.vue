@@ -44,14 +44,14 @@
       </div>
     </div>
 
-    <!-- Info Overlay -->
-    <div v-if="!isPlaying" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm pointer-events-none">
-      <div class="text-center">
+    <!-- Info Overlay - Only show when not analyzed -->
+    <div v-if="!isPlaying && !isAnalyzed" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm pointer-events-none">
+      <div class="text-center px-4">
         <div class="text-6xl mb-4 animate-pulse">🌌</div>
         <p class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-cyan-500">
-          Enter The Music Cosmos
+          Your Music Universe Awaits
         </p>
-        <p class="text-sm text-gray-400 mt-2">Play a track to unlock the universe</p>
+        <p class="text-sm text-gray-400 mt-2">Click "✨ Analyze My Taste" to visualize your musical identity</p>
       </div>
     </div>
 
@@ -69,9 +69,14 @@ import * as THREE from 'three'
 
 const props = defineProps({
   isPlaying: Boolean,
+  isAnalyzed: Boolean,
   tracks: {
     type: Array,
     default: () => []
+  },
+  tasteProfile: {
+    type: Object,
+    default: null
   }
 })
 
@@ -87,9 +92,10 @@ const trebleLevel = ref(0)
 const visualizerModes = [
   { id: 'galaxy', name: 'Galaxy', icon: '🌌' },
   { id: 'dna', name: 'DNA Helix', icon: '🧬' },
-  { id: 'quantum', name: 'Quantum', icon: '⚛️' },
-  { id: 'tunnel', name: 'Time Tunnel', icon: '🕰️' },
-  { id: 'chaos', name: 'CHAOS', icon: '🌀' }
+  { id: 'quantum', name: 'Quantum Field', icon: '⚛️' },
+  { id: 'tunnel', name: 'Wormhole', icon: '🕳️' },
+  { id: 'nebula', name: 'Nebula', icon: '🌠' },
+  { id: 'chaos', name: 'Hyperdrive', icon: '✨' }
 ]
 
 let scene, camera, renderer, raycaster, mouse
@@ -101,6 +107,7 @@ let galaxyStars = []
 let dnaHelix = { strand1: [], strand2: [], connections: [] }
 let quantumParticles = []
 let tunnelRings = []
+let nebulaParticles = []
 
 // Mouse handling
 raycaster = new THREE.Raycaster()
@@ -134,6 +141,16 @@ watch(() => props.isPlaying, (playing) => {
   }
 })
 
+watch(() => props.isAnalyzed, (analyzed) => {
+  if (analyzed && props.tracks.length > 0) {
+    // Refresh galaxy with new tracks
+    if (currentMode.value === 'galaxy' || currentMode.value === 'chaos') {
+      clearScene()
+      initMode(currentMode.value)
+    }
+  }
+})
+
 watch(currentMode, (newMode) => {
   clearScene()
   initMode(newMode)
@@ -154,21 +171,32 @@ const initThreeJS = () => {
   camera.position.z = 100
   
   // Renderer
-  renderer = new THREE.WebGLRenderer({ 
-    canvas: canvas.value, 
+  renderer = new THREE.WebGLRenderer({
+    canvas: canvas.value,
     antialias: true,
-    alpha: true 
+    alpha: true,
+    powerPreference: 'high-performance'
   })
   renderer.setSize(canvas.value.clientWidth, canvas.value.clientHeight)
-  renderer.setPixelRatio(window.devicePixelRatio)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) // Cap at 2 for performance
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.5
   
-  // Lights
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+  // Lights - Enhanced for better 3D effect
+  const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.3)
   scene.add(ambientLight)
-  
-  const pointLight = new THREE.PointLight(0xffffff, 1)
-  pointLight.position.set(50, 50, 50)
-  scene.add(pointLight)
+
+  const pointLight1 = new THREE.PointLight(0x00d9ff, 2, 500)
+  pointLight1.position.set(50, 50, 50)
+  scene.add(pointLight1)
+
+  const pointLight2 = new THREE.PointLight(0xff00ff, 2, 500)
+  pointLight2.position.set(-50, -50, -50)
+  scene.add(pointLight2)
+
+  const pointLight3 = new THREE.PointLight(0x1DB954, 1.5, 300)
+  pointLight3.position.set(0, 100, 0)
+  scene.add(pointLight3)
   
   // Initialize first mode
   initMode('galaxy')
@@ -208,16 +236,26 @@ const clearScene = () => {
     scene.remove(object)
   }
   
-  // Re-add lights
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+  // Re-add enhanced lights
+  const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.3)
   scene.add(ambientLight)
-  const pointLight = new THREE.PointLight(0xffffff, 1)
-  pointLight.position.set(50, 50, 50)
-  scene.add(pointLight)
+
+  const pointLight1 = new THREE.PointLight(0x00d9ff, 2, 500)
+  pointLight1.position.set(50, 50, 50)
+  scene.add(pointLight1)
+
+  const pointLight2 = new THREE.PointLight(0xff00ff, 2, 500)
+  pointLight2.position.set(-50, -50, -50)
+  scene.add(pointLight2)
+
+  const pointLight3 = new THREE.PointLight(0x1DB954, 1.5, 300)
+  pointLight3.position.set(0, 100, 0)
+  scene.add(pointLight3)
   
   galaxyStars = []
   quantumParticles = []
   tunnelRings = []
+  nebulaParticles = []
 }
 
 const initMode = (mode) => {
@@ -234,27 +272,41 @@ const initMode = (mode) => {
     case 'tunnel':
       createTimeTunnel()
       break
+    case 'nebula':
+      createNebula()
+      break
     case 'chaos':
       createGalaxy()
-      createDNAHelix()
       createQuantumField()
+      createNebula()
       break
   }
 }
 
 const createGalaxy = () => {
   const starCount = Math.min(props.tracks.length * 3, 1000)
-  
+
   for (let i = 0; i < starCount; i++) {
-    const geometry = new THREE.SphereGeometry(Math.random() * 2 + 0.5, 8, 8)
+    // Varied geometry for more interest
+    const size = Math.random() * 2 + 0.5
+    const geometry = Math.random() > 0.7
+      ? new THREE.OctahedronGeometry(size, 0)
+      : new THREE.SphereGeometry(size, 8, 8)
+
     const hue = Math.random() * 360
-    const color = new THREE.Color(`hsl(${hue}, 100%, 60%)`)
-    const material = new THREE.MeshBasicMaterial({ 
+    const color = new THREE.Color(`hsl(${hue}, 100%, ${50 + Math.random() * 30}%)`)
+
+    // Use more sophisticated materials for depth
+    const material = new THREE.MeshPhongMaterial({
       color,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9,
+      emissive: color,
+      emissiveIntensity: 0.3,
+      shininess: 100,
+      specular: 0xffffff
     })
-    
+
     const star = new THREE.Mesh(geometry, material)
     
     // Spiral galaxy distribution
@@ -283,21 +335,24 @@ const createGalaxy = () => {
 }
 
 const createDNAHelix = () => {
-  const segments = 50
-  const radius = 20
-  const height = 100
-  
+  const segments = 60
+  const radius = 25
+  const height = 120
+
   for (let i = 0; i < segments; i++) {
     const t = i / segments
-    const angle = t * Math.PI * 8
+    const angle = t * Math.PI * 10
     const y = (t - 0.5) * height
-    
-    // Strand 1
-    const geometry1 = new THREE.SphereGeometry(1.5, 8, 8)
-    const material1 = new THREE.MeshPhongMaterial({ 
-      color: 0x00ff88,
-      emissive: 0x00ff88,
-      emissiveIntensity: 0.5
+
+    // Strand 1 - Enhanced with glowing effect
+    const geometry1 = new THREE.SphereGeometry(2, 12, 12)
+    const material1 = new THREE.MeshPhongMaterial({
+      color: 0x00ffbb,
+      emissive: 0x00ffbb,
+      emissiveIntensity: 0.8,
+      shininess: 150,
+      transparent: true,
+      opacity: 0.95
     })
     const sphere1 = new THREE.Mesh(geometry1, material1)
     sphere1.position.set(
@@ -308,12 +363,15 @@ const createDNAHelix = () => {
     scene.add(sphere1)
     dnaHelix.strand1.push(sphere1)
     
-    // Strand 2
-    const geometry2 = new THREE.SphereGeometry(1.5, 8, 8)
-    const material2 = new THREE.MeshPhongMaterial({ 
-      color: 0xff0088,
-      emissive: 0xff0088,
-      emissiveIntensity: 0.5
+    // Strand 2 - Enhanced with glowing effect
+    const geometry2 = new THREE.SphereGeometry(2, 12, 12)
+    const material2 = new THREE.MeshPhongMaterial({
+      color: 0xff0099,
+      emissive: 0xff0099,
+      emissiveIntensity: 0.8,
+      shininess: 150,
+      transparent: true,
+      opacity: 0.95
     })
     const sphere2 = new THREE.Mesh(geometry2, material2)
     sphere2.position.set(
@@ -341,15 +399,31 @@ const createDNAHelix = () => {
 }
 
 const createQuantumField = () => {
-  for (let i = 0; i < 500; i++) {
-    const geometry = new THREE.SphereGeometry(0.5, 6, 6)
+  for (let i = 0; i < 800; i++) {
+    // Mix of different shapes for variety
+    const shapeType = Math.floor(Math.random() * 3)
+    let geometry
+    switch(shapeType) {
+      case 0:
+        geometry = new THREE.TetrahedronGeometry(0.8, 0)
+        break
+      case 1:
+        geometry = new THREE.OctahedronGeometry(0.6, 0)
+        break
+      default:
+        geometry = new THREE.SphereGeometry(0.5, 8, 8)
+    }
+
     const hue = Math.random() * 360
-    const material = new THREE.MeshBasicMaterial({ 
-      color: new THREE.Color(`hsl(${hue}, 100%, 60%)`),
+    const material = new THREE.MeshPhongMaterial({
+      color: new THREE.Color(`hsl(${hue}, 100%, ${60 + Math.random() * 20}%)`),
       transparent: true,
-      opacity: 0.8
+      opacity: 0.85,
+      emissive: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
+      emissiveIntensity: 0.4,
+      shininess: 80
     })
-    
+
     const particle = new THREE.Mesh(geometry, material)
     particle.position.set(
       (Math.random() - 0.5) * 200,
@@ -373,40 +447,99 @@ const createQuantumField = () => {
 }
 
 const createTimeTunnel = () => {
-  for (let i = 0; i < 30; i++) {
-    const geometry = new THREE.TorusGeometry(50 + i * 5, 2, 16, 100)
-    const hue = (i * 12) % 360
-    const material = new THREE.MeshBasicMaterial({ 
+  for (let i = 0; i < 40; i++) {
+    const geometry = new THREE.TorusGeometry(50 + i * 6, 2.5, 20, 100)
+    const hue = (i * 9) % 360
+    const material = new THREE.MeshPhongMaterial({
       color: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
       wireframe: true,
       transparent: true,
-      opacity: 0.3
+      opacity: 0.5,
+      emissive: new THREE.Color(`hsl(${hue}, 100%, 40%)`),
+      emissiveIntensity: 0.6
     })
-    
+
     const ring = new THREE.Mesh(geometry, material)
-    ring.position.z = -i * 20
-    ring.userData = { initialZ: ring.position.z }
-    
+    ring.position.z = -i * 25
+    ring.userData = { initialZ: ring.position.z, hue: hue }
+
     scene.add(ring)
     tunnelRings.push(ring)
   }
 }
 
+const createNebula = () => {
+  // Create a cloud of glowing particles
+  for (let i = 0; i < 1200; i++) {
+    const size = Math.random() * 1.5 + 0.3
+    const geometry = new THREE.SphereGeometry(size, 8, 8)
+
+    // Nebula-like colors (purples, blues, pinks, teals)
+    const colorPalette = [
+      { h: 280, s: 100, l: 60 }, // Purple
+      { h: 300, s: 100, l: 65 }, // Magenta
+      { h: 200, s: 100, l: 60 }, // Cyan
+      { h: 180, s: 100, l: 55 }, // Teal
+      { h: 320, s: 100, l: 70 }  // Pink
+    ]
+    const colorChoice = colorPalette[Math.floor(Math.random() * colorPalette.length)]
+    const color = new THREE.Color(`hsl(${colorChoice.h}, ${colorChoice.s}%, ${colorChoice.l}%)`)
+
+    const material = new THREE.MeshPhongMaterial({
+      color,
+      transparent: true,
+      opacity: 0.6 + Math.random() * 0.3,
+      emissive: color,
+      emissiveIntensity: 0.8,
+      fog: true
+    })
+
+    const particle = new THREE.Mesh(geometry, material)
+
+    // Create nebula cloud formation
+    const angle = Math.random() * Math.PI * 2
+    const radius = Math.random() * 100 + 30
+    const height = (Math.random() - 0.5) * 80
+
+    particle.position.x = Math.cos(angle) * radius
+    particle.position.y = height
+    particle.position.z = Math.sin(angle) * radius
+
+    particle.userData = {
+      velocity: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.1,
+        (Math.random() - 0.5) * 0.1,
+        (Math.random() - 0.5) * 0.1
+      ),
+      originalColor: color.clone(),
+      floatSpeed: Math.random() * 0.01 + 0.005
+    }
+
+    scene.add(particle)
+    nebulaParticles.push(particle)
+  }
+}
+
 const updateAudioLevels = () => {
-  if (!analyser || !dataArray) {
-    // Procedural fallback
-    bassLevel.value = Math.abs(Math.sin(Date.now() / 400)) * 0.6 + 0.4
-    midLevel.value = Math.abs(Math.sin(Date.now() / 300)) * 0.5 + 0.5
-    trebleLevel.value = Math.abs(Math.sin(Date.now() / 500)) * 0.4 + 0.6
+  if (!analyser || !dataArray || !props.isPlaying) {
+    // Procedural fallback - use analyzed data for more interesting patterns
+    const time = Date.now()
+    const diversity = props.tasteProfile?.diversityScore || 0.5
+    const popularity = props.tasteProfile?.avgPopularity || 50
+
+    // Create patterns based on user's music taste
+    bassLevel.value = Math.abs(Math.sin(time / (400 - diversity * 100))) * (0.4 + diversity * 0.3) + 0.3
+    midLevel.value = Math.abs(Math.sin(time / (300 - popularity))) * 0.5 + 0.4
+    trebleLevel.value = Math.abs(Math.cos(time / 500)) * (0.3 + (popularity / 100) * 0.4) + 0.4
     return
   }
-  
+
   analyser.getByteFrequencyData(dataArray)
-  
+
   const bassRange = dataArray.slice(0, Math.floor(bufferLength * 0.1))
   const midRange = dataArray.slice(Math.floor(bufferLength * 0.1), Math.floor(bufferLength * 0.4))
   const trebleRange = dataArray.slice(Math.floor(bufferLength * 0.4), Math.floor(bufferLength * 0.8))
-  
+
   bassLevel.value = bassRange.reduce((a, b) => a + b, 0) / bassRange.length / 255
   midLevel.value = midRange.reduce((a, b) => a + b, 0) / midRange.length / 255
   trebleLevel.value = trebleRange.reduce((a, b) => a + b, 0) / trebleRange.length / 255
@@ -414,11 +547,12 @@ const updateAudioLevels = () => {
 
 const animate = () => {
   animationId = requestAnimationFrame(animate)
-  
-  if (props.isPlaying) {
+
+  // Always update audio levels (will use procedural if not playing)
+  if (props.isPlaying || props.isAnalyzed) {
     updateAudioLevels()
   }
-  
+
   const time = Date.now() * 0.0005
   
   // Update based on mode
@@ -435,10 +569,13 @@ const animate = () => {
     case 'tunnel':
       updateTunnel(time)
       break
+    case 'nebula':
+      updateNebula(time)
+      break
     case 'chaos':
       updateGalaxy(time)
-      updateDNA(time)
       updateQuantum(time)
+      updateNebula(time)
       break
   }
   
@@ -454,17 +591,17 @@ const updateGalaxy = (time) => {
   galaxyStars.forEach((star, i) => {
     // Rotate galaxy
     star.rotation.y += star.userData.speed
-    
-    // Pulse with music
-    if (props.isPlaying) {
+
+    // Pulse with music (or analyzed data)
+    if (props.isPlaying || props.isAnalyzed) {
       const scale = 1 + bassLevel.value * 0.5
       star.scale.set(scale, scale, scale)
-      
-      // Change color with music
+
+      // Change color with music/data
       const hue = (star.userData.hue + midLevel.value * 60) % 360
       star.material.color.setHSL(hue / 360, 1, 0.6)
     }
-    
+
     // Spiral motion
     const radius = Math.sqrt(star.position.x ** 2 + star.position.z ** 2)
     const angle = Math.atan2(star.position.z, star.position.x) + 0.001
@@ -548,18 +685,51 @@ const updateTunnel = (time) => {
   tunnelRings.forEach((ring, i) => {
     // Move forward
     ring.position.z += 2 + bassLevel.value * 3
-    
+
     // Reset when too close
     if (ring.position.z > 50) {
       ring.position.z = ring.userData.initialZ
     }
-    
+
     // Rotate
     ring.rotation.z += 0.01 + midLevel.value * 0.05
-    
+
     // Scale with music
     const scale = 1 + trebleLevel.value * 0.3
     ring.scale.set(scale, scale, 1)
+
+    // Color shift
+    const hue = (ring.userData.hue + time * 10) % 360
+    ring.material.color.setHSL(hue / 360, 1, 0.5)
+    ring.material.emissive.setHSL(hue / 360, 1, 0.4)
+  })
+}
+
+const updateNebula = (time) => {
+  nebulaParticles.forEach((particle, i) => {
+    // Floating motion
+    particle.position.x += Math.sin(time + i) * particle.userData.floatSpeed
+    particle.position.y += Math.cos(time * 0.7 + i) * particle.userData.floatSpeed
+    particle.position.z += Math.sin(time * 0.5 + i) * particle.userData.floatSpeed
+
+    // Pulse with bass
+    const scale = 1 + bassLevel.value * 0.8
+    particle.scale.set(scale, scale, scale)
+
+    // Color breathing effect
+    const breathe = Math.sin(time * 2 + i * 0.1) * 0.5 + 0.5
+    const intensity = 0.5 + breathe * 0.5 + midLevel.value * 0.3
+    particle.material.emissiveIntensity = intensity
+
+    // Rotate for dynamic effect
+    particle.rotation.x += 0.01
+    particle.rotation.y += 0.01
+
+    // Boundary check - keep particles in nebula cloud
+    const distance = particle.position.length()
+    if (distance > 150) {
+      particle.position.normalize().multiplyScalar(150)
+    }
   })
 }
 
