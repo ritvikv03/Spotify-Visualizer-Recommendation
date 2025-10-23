@@ -471,14 +471,44 @@ const startAnalysis = async () => {
 
     // Get audio features
     const trackIds = uniqueTracks.map(t => t.id).filter(id => id)
-    console.log('🎼 Analyzing audio features...')
+    console.log('🎼 Analyzing audio features for', trackIds.length, 'tracks...')
     
     let audioFeatures
     try {
-      audioFeatures = await spotifyService.getAudioFeatures(trackIds)
+      // Spotify's audio features endpoint can handle up to 100 tracks
+      // But let's batch in smaller chunks to be safe
+      const batchSize = 50
+      const batches = []
+      
+      for (let i = 0; i < trackIds.length; i += batchSize) {
+        const batch = trackIds.slice(i, i + batchSize)
+        batches.push(batch)
+      }
+      
+      console.log(`Processing ${batches.length} batches...`)
+      
+      const allFeatures = []
+      for (const batch of batches) {
+        try {
+          const batchResult = await spotifyService.getAudioFeatures(batch)
+          if (batchResult?.audio_features) {
+            allFeatures.push(...batchResult.audio_features)
+          }
+        } catch (batchError) {
+          console.error('Batch failed:', batchError)
+        }
+      }
+      
+      audioFeatures = { audio_features: allFeatures }
+      console.log(`✓ Got audio features for ${allFeatures.filter(f => f).length} tracks`)
+      
     } catch (error) {
-      console.error('Audio features failed:', error)
-      alert('Failed to analyze audio features. Please try again!')
+      console.error('Audio features error:', error)
+      console.error('Status:', error.response?.status)
+      console.error('Data:', error.response?.data)
+      
+      alert(`❌ Audio Analysis Failed\n\nError: ${error.message}\n\nThis might be because:\n1. Your account is very new\n2. Spotify API is having issues\n3. The tracks are unavailable\n\nTry:\n1. Playing more music on Spotify\n2. Waiting a few minutes\n3. Trying again`)
+      
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
@@ -487,8 +517,18 @@ const startAnalysis = async () => {
     // Calculate taste profile
     const features = audioFeatures.audio_features.filter(f => f !== null)
     
+    console.log(`Valid features: ${features.length} out of ${trackIds.length}`)
+    
     if (features.length === 0) {
-      alert('Could not analyze audio features. Please try again!')
+      alert(`😕 No audio features available\n\nWe found ${uniqueTracks.length} tracks but couldn't analyze them.\n\nThis usually means:\n1. The tracks are unavailable in your region\n2. Your Spotify account is brand new\n\nTry:\n1. Playing different songs\n2. Using Spotify for a few days\n3. Coming back later!`)
+      isAnalyzing.value = false
+      isLoadingRecommendations.value = false
+      return
+    }
+    
+    // Need at least 5 features to make recommendations
+    if (features.length < 5) {
+      alert(`⚠️ Not enough data\n\nWe only got ${features.length} valid tracks.\n\nPlease:\n1. Listen to more songs on Spotify\n2. Make sure songs are actually playing\n3. Try again in a few minutes`)
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return

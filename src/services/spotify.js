@@ -129,12 +129,26 @@ export default {
   // Get audio features for multiple tracks
   async getAudioFeatures(trackIds) {
     try {
+      // Ensure trackIds is an array and filter out invalid IDs
+      const validIds = Array.isArray(trackIds) 
+        ? trackIds.filter(id => id && typeof id === 'string')
+        : []
+      
+      if (validIds.length === 0) {
+        console.warn('No valid track IDs provided to getAudioFeatures')
+        return { audio_features: [] }
+      }
+      
+      // Spotify API accepts max 100 IDs
+      const idsToFetch = validIds.slice(0, 100)
+      
       const response = await spotifyApi.get('/audio-features', {
-        params: { ids: trackIds.join(',') }
+        params: { ids: idsToFetch.join(',') }
       })
       return response.data
     } catch (error) {
       console.error('Error fetching audio features:', error)
+      console.error('Response:', error.response?.data)
       throw error
     }
   },
