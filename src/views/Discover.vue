@@ -17,7 +17,8 @@
             <!-- Theme Selector -->
             <select 
               v-model="themeStore.currentTheme"
-              class="bg-spotify-gray px-2 md:px-3 py-2 rounded text-xs md:text-sm border border-white border-opacity-20 hover:border-opacity-40 transition-colors"
+              class="bg-spotify-gray px-3 md:px-4 py-2 md:py-2.5 rounded text-xs md:text-sm border border-white border-opacity-20 hover:border-opacity-40 transition-colors appearance-none cursor-pointer pr-8 bg-no-repeat bg-right"
+              style="background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e'); background-position: right 0.5rem center; background-size: 1.25rem;"
             >
               <option v-for="(theme, key) in themeStore.themes" :key="key" :value="key">
                 {{ theme.name }}
