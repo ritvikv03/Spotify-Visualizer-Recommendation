@@ -43,14 +43,16 @@ spotifyApi.interceptors.response.use(
       }
     }
 
-    // Enhanced 403 error handling
-    if (error.response?.status === 403) {
-      console.error('⛔ 403 Forbidden Error Detected')
+    // Enhanced 403/404 error handling for deprecated endpoints
+    if (error.response?.status === 403 || error.response?.status === 404) {
+      const statusCode = error.response?.status
+      console.error(`⛔ ${statusCode} Error Detected`)
       console.error('Endpoint:', error.config?.url)
       console.error('Method:', error.config?.method?.toUpperCase())
-      console.error('Response body:', error.response?.data || 'Empty (typical for 403 errors)')
+      console.error('Response body:', error.response?.data || 'Empty')
 
       // Check if recommendations endpoint (deprecated as of Nov 27, 2024)
+      // Can return 403 OR 404 depending on app status
       if (error.config?.url?.includes('recommendations')) {
         const customError = new Error('Spotify Recommendations endpoint is no longer available for new apps. Using alternative recommendation algorithm.')
         customError.isDeprecatedEndpoint = true
@@ -66,12 +68,19 @@ spotifyApi.interceptors.response.use(
         return Promise.reject(customError)
       }
 
-      // Generic 403 guidance
-      console.error('📋 Common 403 Causes:')
-      console.error('1. User not added to Developer Dashboard allowlist (Development Mode)')
-      console.error('2. Endpoint deprecated/unavailable for new apps')
-      console.error('3. Insufficient OAuth scopes')
-      console.error('4. App not in Extended Quota Mode')
+      // Generic 403/404 guidance
+      if (statusCode === 403) {
+        console.error('📋 Common 403 Causes:')
+        console.error('1. User not added to Developer Dashboard allowlist (Development Mode)')
+        console.error('2. Endpoint deprecated/unavailable for new apps')
+        console.error('3. Insufficient OAuth scopes')
+        console.error('4. App not in Extended Quota Mode')
+      } else if (statusCode === 404) {
+        console.error('📋 Common 404 Causes:')
+        console.error('1. Endpoint has been removed or deprecated')
+        console.error('2. URL may be incorrect')
+        console.error('3. API version mismatch')
+      }
       console.error('\n💡 Solution: Add users to your app allowlist at https://developer.spotify.com/dashboard')
     }
 

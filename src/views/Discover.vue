@@ -485,6 +485,8 @@ const startAnalysis = async () => {
     // Enhanced error messaging based on error type
     if (error.response?.status === 403) {
       analysisError.value = `🔒 Access Denied: This app is in Development Mode. Please ask the developer to add your Spotify account to the app's allowlist in the Spotify Developer Dashboard, or try logging in with a different account that has been approved.`
+    } else if (error.response?.status === 404) {
+      analysisError.value = `⚠️ API Endpoint Not Found: Some Spotify features have been deprecated. Using alternative recommendation algorithm. Check console for details.`
     } else if (error.isDeprecatedEndpoint) {
       analysisError.value = `⚠️ ${error.message} Your analysis is using an alternative recommendation algorithm.`
     } else if (error.message.includes('No music data found')) {
@@ -539,6 +541,8 @@ const loadRecommendations = async () => {
     // Enhanced error messaging
     if (error.response?.status === 403) {
       analysisError.value = `🔒 Access Denied: Unable to load more recommendations. Your account may not be approved for this app. Ask the developer to add you to the allowlist.`
+    } else if (error.response?.status === 404) {
+      analysisError.value = 'Some Spotify endpoints are unavailable. Using alternative recommendation algorithm.'
     } else if (error.isDeprecatedEndpoint) {
       analysisError.value = 'Using alternative recommendation algorithm. Results may be limited.'
     } else {
