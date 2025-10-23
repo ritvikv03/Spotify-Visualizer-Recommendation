@@ -139,20 +139,16 @@
             <h3 class="text-xl font-semibold mb-4">Your Music Taste Profile</h3>
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Average Energy</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ (tasteProfile.avgEnergy * 100).toFixed(0) }}%</p>
-              </div>
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Average Danceability</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ (tasteProfile.avgDanceability * 100).toFixed(0) }}%</p>
-              </div>
-              <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Average Valence</p>
-                <p class="text-2xl font-bold text-spotify-green">{{ (tasteProfile.avgValence * 100).toFixed(0) }}%</p>
+                <p class="text-sm text-gray-400">Average Popularity</p>
+                <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.avgPopularity.toFixed(0) }}%</p>
               </div>
               <div class="bg-spotify-dark p-4 rounded-lg">
                 <p class="text-sm text-gray-400">Top Genre</p>
                 <p class="text-lg font-bold text-spotify-green">{{ tasteProfile.topGenre || 'Mixed' }}</p>
+              </div>
+              <div class="bg-spotify-dark p-4 rounded-lg col-span-2">
+                <p class="text-sm text-gray-400">Tracks Analyzed</p>
+                <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.tracksAnalyzed }}</p>
               </div>
             </div>
           </div>
@@ -344,18 +340,18 @@ const startAnalysis = async () => {
   isLoadingRecommendations.value = true
   
   try {
-    console.log('🎵 Starting instant analysis...')
+    console.log('🎵 Starting analysis (Audio Features API is deprecated)...')
     
     let tracks = []
     let artists = []
     let dataSource = 'unknown'
     
-    // Strategy 1: Recently played (most reliable, always works)
+    // Get recently played (most reliable)
     try {
       console.log('🕐 Checking recently played...')
       const recentResult = await spotifyService.getRecentlyPlayed(50)
       if (recentResult?.items?.length > 0) {
-        const recentTracks = recentResult.items.map(item => item.track).filter(t => t && t.id)
+        const recentTracks = recentResult.items.map(item => item.track).filter(t => t && t.id && !t.is_local)
         tracks = [...tracks, ...recentTracks]
         dataSource = 'recently played'
         console.log(`✓ Found ${recentTracks.length} recent tracks`)
@@ -364,86 +360,25 @@ const startAnalysis = async () => {
       console.log('Recently played failed:', error.response?.status)
     }
     
-    // Strategy 2: Try top tracks (may fail with 403 if no data)
+    // Try top tracks
     if (tracks.length < 20) {
       for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
         try {
           console.log(`📊 Checking ${timeRange} top tracks...`)
           const tracksResult = await spotifyService.getUserTopTracks(timeRange, 30)
           if (tracksResult?.items?.length > 0) {
-            tracks = [...tracks, ...tracksResult.items]
+            tracks = [...tracks, ...tracksResult.items.filter(t => !t.is_local)]
             dataSource = `top tracks (${timeRange})`
             console.log(`✓ Found ${tracksResult.items.length} tracks from ${timeRange}`)
             break
           }
         } catch (error) {
-          console.log(`${timeRange} not available (${error.response?.status})`)
+          console.log(`${timeRange} not available`)
         }
       }
     }
     
-    // Strategy 3: Liked/Saved tracks
-    if (tracks.length < 10) {
-      try {
-        console.log('💚 Checking liked songs...')
-        const savedResult = await spotifyService.getSavedTracks(50)
-        if (savedResult?.items?.length > 0) {
-          const savedTracks = savedResult.items.map(item => item.track).filter(t => t && t.id)
-          tracks = [...tracks, ...savedTracks]
-          dataSource = 'liked songs'
-          console.log(`✓ Found ${savedTracks.length} liked songs`)
-        }
-      } catch (error) {
-        console.log('Saved tracks failed:', error.response?.status)
-      }
-    }
-    
-    // Strategy 4: User's playlists
-    if (tracks.length < 10) {
-      try {
-        console.log('📚 Checking your playlists...')
-        const playlistsResult = await spotifyService.getUserPlaylists()
-        
-        for (const playlist of (playlistsResult.items || []).slice(0, 3)) {
-          if (tracks.length >= 30) break
-          
-          try {
-            const playlistTracks = await spotifyService.getPlaylistTracks(playlist.id, 30)
-            const validTracks = playlistTracks.items
-              .map(item => item.track)
-              .filter(track => track && track.id)
-            
-            tracks = [...tracks, ...validTracks]
-            dataSource = 'playlists'
-            console.log(`✓ Got ${validTracks.length} tracks from: ${playlist.name}`)
-          } catch (err) {
-            console.log(`Playlist "${playlist.name}" unavailable`)
-          }
-        }
-      } catch (error) {
-        console.log('Playlists failed:', error.response?.status)
-      }
-    }
-    
-    // Remove duplicates and validate tracks
-    const uniqueTracks = Array.from(
-      new Map(
-        tracks
-          .filter(t => t && t.id && t.name && !t.is_local) // Filter out local files and invalid tracks
-          .map(t => [t.id, t])
-      ).values()
-    ).slice(0, 50)
-    
-    console.log(`🎯 Total unique tracks found: ${uniqueTracks.length} (from ${dataSource})`)
-
-    if (uniqueTracks.length === 0) {
-      alert(`😔 No valid tracks found!\n\n✨ Quick start:\n\n1. Open Spotify and play 5-10 songs (not local files)\n2. Like a few songs (❤️ button)\n3. Wait 2-3 minutes\n4. Come back and click Analyze!\n\nNote: We can't analyze local files or unavailable tracks.`)
-      isAnalyzing.value = false
-      isLoadingRecommendations.value = false
-      return
-    }
-
-    // Try to get top artists (optional, won't fail if unavailable)
+    // Get top artists
     for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
       if (artists.length >= 10) break
       try {
@@ -456,103 +391,60 @@ const startAnalysis = async () => {
         console.log(`Top artists ${timeRange} unavailable`)
       }
     }
+    
+    // Remove duplicates
+    const uniqueTracks = Array.from(
+      new Map(tracks.filter(t => t && t.id).map(t => [t.id, t])).values()
+    ).slice(0, 50)
+    
+    console.log(`🎯 Total unique tracks: ${uniqueTracks.length} (from ${dataSource})`)
 
-    // Extract artists from tracks if we don't have top artists
+    if (uniqueTracks.length === 0) {
+      alert(`😔 No music data found!\n\nQuick start:\n1. Play 5-10 songs on Spotify\n2. Like some songs (❤️)\n3. Wait a few minutes\n4. Try again!`)
+      isAnalyzing.value = false
+      isLoadingRecommendations.value = false
+      return
+    }
+
+    // Extract artists from tracks if needed
     if (artists.length < 5) {
-      console.log('📝 Extracting artists from tracks...')
-      const artistIds = [...new Set(
-        uniqueTracks.flatMap(track => track.artists?.map(a => a.id) || [])
-      )].filter(id => id).slice(0, 15)
-      
+      const artistIds = [...new Set(uniqueTracks.flatMap(track => track.artists?.map(a => a.id) || []))].slice(0, 15)
       if (artistIds.length > 0) {
-        const artistsData = await Promise.all(
-          artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
-        )
-        artists = artistsData.filter(a => a !== null)
-        console.log(`✓ Extracted ${artists.length} artists`)
+        const artistsData = await Promise.all(artistIds.map(id => spotifyService.getArtist(id).catch(() => null)))
+        artists = [...artists, ...artistsData.filter(a => a !== null)]
       }
     }
 
-    // Get audio features with better error handling
-    const trackIds = uniqueTracks.map(t => t.id).filter(id => id)
-    console.log('🎼 Analyzing audio features for', trackIds.length, 'tracks...')
-    console.log('Track IDs sample:', trackIds.slice(0, 5))
-    
-    let allFeatures = []
-    
-    try {
-      // Try fetching in smaller batches to avoid rate limits
-      const batchSize = 20 // Smaller batches
-      
-      for (let i = 0; i < trackIds.length; i += batchSize) {
-        const batch = trackIds.slice(i, i + batchSize)
-        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(trackIds.length / batchSize)}...`)
-        
-        try {
-          const batchResult = await spotifyService.getAudioFeatures(batch)
-          if (batchResult?.audio_features) {
-            const validFeatures = batchResult.audio_features.filter(f => f !== null)
-            allFeatures.push(...validFeatures)
-            console.log(`✓ Got ${validFeatures.length} features from this batch`)
-          }
-          
-          // Small delay between batches to avoid rate limiting
-          if (i + batchSize < trackIds.length) {
-            await new Promise(resolve => setTimeout(resolve, 100))
-          }
-        } catch (batchError) {
-          console.error(`Batch ${Math.floor(i / batchSize) + 1} failed:`, batchError.response?.status, batchError.response?.data)
-          // Continue with next batch even if one fails
-        }
-      }
-      
-      console.log(`✓ Total audio features collected: ${allFeatures.length} out of ${trackIds.length}`)
-      
-    } catch (error) {
-      console.error('Audio features error:', error)
-      console.error('Status:', error.response?.status)
-      console.error('Data:', error.response?.data)
-    }
-    
-    // Check if we got enough features
-    if (allFeatures.length === 0) {
-      alert(`❌ Cannot Analyze Audio\n\nWe found ${uniqueTracks.length} tracks but Spotify won't let us analyze them.\n\nThis happens when:\n1. Tracks are region-locked\n2. Tracks are local files\n3. Your account is brand new\n4. Spotify API is having issues\n\nTry:\n1. Playing different songs\n2. Using Spotify Premium\n3. Waiting a day and trying again`)
-      isAnalyzing.value = false
-      isLoadingRecommendations.value = false
-      return
-    }
-    
-    if (allFeatures.length < 5) {
-      alert(`⚠️ Not Enough Data\n\nOnly ${allFeatures.length} out of ${uniqueTracks.length} tracks could be analyzed.\n\nPlease:\n1. Listen to more popular songs (not local files)\n2. Make sure tracks are available in your region\n3. Try again with different music`)
-      isAnalyzing.value = false
-      isLoadingRecommendations.value = false
-      return
-    }
+    // Create taste profile WITHOUT audio features (using genre and popularity)
+    const avgPopularity = uniqueTracks.reduce((sum, t) => sum + (t.popularity || 50), 0) / uniqueTracks.length
+    const genreCounts = {}
+    artists.forEach(artist => {
+      artist.genres?.forEach(genre => {
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1
+      })
+    })
+    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Mixed'
 
     tasteProfile.value = {
-      avgEnergy: allFeatures.reduce((sum, f) => sum + f.energy, 0) / allFeatures.length,
-      avgDanceability: allFeatures.reduce((sum, f) => sum + f.danceability, 0) / allFeatures.length,
-      avgValence: allFeatures.reduce((sum, f) => sum + f.valence, 0) / allFeatures.length,
-      topGenre: artists[0]?.genres?.[0] || 'Mixed'
+      avgEnergy: 0.6, // Default values since we can't get audio features
+      avgDanceability: 0.6,
+      avgValence: 0.5,
+      avgPopularity,
+      topGenre,
+      tracksAnalyzed: uniqueTracks.length
     }
 
-    console.log('✨ Taste profile:', tasteProfile.value)
+    console.log('✨ Taste profile (without audio features):', tasteProfile.value)
 
     // Get recommendations
     await loadRecommendations()
     
     analysisComplete.value = true
-    console.log(`🎉 Analysis complete! Found ${recommendations.value.length} hidden gems!`)
+    console.log(`🎉 Found ${recommendations.value.length} hidden gems!`)
     
   } catch (error) {
     console.error('❌ Analysis error:', error)
-    console.error('Error details:', error.response?.data || error.message)
-    
-    const errorMsg = error.response?.status === 403 
-      ? `🔒 Permission Error\n\nPlease:\n1. Click "Logout"\n2. Log back in\n3. Accept all permissions\n4. Try analyzing again!\n\nWe need access to your Spotify data to generate recommendations.`
-      : `😕 Something went wrong!\n\nError: ${error.message}\n\nTry:\n1. Logging out and back in\n2. Playing some music on Spotify\n3. Checking the console for details`
-    
-    alert(errorMsg)
+    alert(`😕 Error: ${error.message}\n\nTry:\n1. Logout and login again\n2. Play some music\n3. Try again`)
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
@@ -562,23 +454,19 @@ const startAnalysis = async () => {
 const loadRecommendations = async () => {
   try {
     // Get seed tracks from top tracks
-    const topTracks = await spotifyService.getUserTopTracks('short_term', 5)
+    const topTracks = await spotifyService.getUserTopTracks('short_term', 5).catch(() => 
+      spotifyService.getUserTopTracks('long_term', 5)
+    )
     const seedTracks = topTracks.items.slice(0, 3).map(t => t.id)
 
-    // Build parameters with filters
+    // Build parameters WITHOUT audio feature targets (since API is deprecated)
     const params = {
       seed_tracks: seedTracks,
       limit: 20,
-      max_popularity: discoveryFilters.value.maxPopularity,
-      target_energy: discoveryFilters.value.targetEnergy,
-      target_danceability: discoveryFilters.value.targetDanceability,
-      target_valence: discoveryFilters.value.targetValence
+      max_popularity: discoveryFilters.value.maxPopularity
     }
 
-    // Add optional filters
-    if (discoveryFilters.value.useAcousticness) {
-      params.target_acousticness = discoveryFilters.value.targetAcousticness
-    }
+    console.log('🎯 Recommendation params:', params)
 
     // Request recommendations
     const recs = await spotifyService.getRecommendations(params)
@@ -594,8 +482,10 @@ const loadRecommendations = async () => {
     }
 
     recommendations.value = [...recommendations.value, ...filteredTracks]
+    console.log(`✓ Got ${filteredTracks.length} recommendations`)
   } catch (error) {
     console.error('Error loading recommendations:', error)
+    alert('Failed to load recommendations. Try adjusting filters or analyzing again.')
   }
 }
 
