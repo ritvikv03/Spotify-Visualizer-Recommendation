@@ -8,11 +8,11 @@ export default {
     extend: {
       colors: {
         spotify: {
-          green: '#1DB954',
-          black: '#191414',
-          dark: '#121212',
-          gray: '#282828',
-          lightgray: '#B3B3B3',
+          green: 'var(--color-primary, #1DB954)',
+          black: 'var(--color-secondary, #191414)',
+          dark: 'var(--color-background, #121212)',
+          gray: 'var(--color-surface, #282828)',
+          lightgray: 'var(--color-text-secondary, #B3B3B3)',
         }
       },
       animation: {
