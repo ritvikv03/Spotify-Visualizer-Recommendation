@@ -43,6 +43,10 @@
 
       <!-- Login Button -->
       <div class="text-center">
+        <div class="glass-effect px-6 py-3 rounded-lg inline-block mb-4">
+          <p class="text-sm text-spotify-green font-semibold">✨ NEW: Works instantly with your playlists!</p>
+        </div>
+        
         <button 
           @click="handleLogin" 
           :disabled="isLoading"

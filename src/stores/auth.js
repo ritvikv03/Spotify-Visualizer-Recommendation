@@ -20,6 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
     'user-top-read',
     'user-read-recently-played',
     'user-library-read',
+    'user-library-modify',
     'streaming',
     'user-read-playback-state',
     'user-modify-playback-state',

@@ -100,6 +100,32 @@ export default {
     }
   },
 
+  // Get user's playlists
+  async getUserPlaylists(limit = 50) {
+    try {
+      const response = await spotifyApi.get('/me/playlists', {
+        params: { limit }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error fetching playlists:', error)
+      throw error
+    }
+  },
+
+  // Get tracks from a playlist
+  async getPlaylistTracks(playlistId, limit = 100) {
+    try {
+      const response = await spotifyApi.get(`/playlists/${playlistId}/tracks`, {
+        params: { limit }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error fetching playlist tracks:', error)
+      throw error
+    }
+  },
+
   // Get audio features for multiple tracks
   async getAudioFeatures(trackIds) {
     try {

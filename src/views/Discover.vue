@@ -2,30 +2,31 @@
   <div class="min-h-screen">
     <!-- Header -->
     <header class="glass-effect border-b border-white border-opacity-10 sticky top-0 z-50">
-      <div class="container mx-auto px-4 py-4">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-          <div class="flex items-center gap-4">
-            <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-500 bg-clip-text text-transparent">
+      <div class="container mx-auto px-2 sm:px-4 py-3 sm:py-4">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 sm:gap-4">
+            <h1 class="text-base sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-spotify-green to-emerald-500 bg-clip-text text-transparent">
               Discovery Studio
             </h1>
-            <span v-if="authStore.user" class="text-gray-400 text-xs md:text-sm hidden sm:inline">
+            <span v-if="authStore.user" class="text-gray-400 text-xs hidden lg:inline">
               Welcome, {{ authStore.user.display_name }}!
             </span>
           </div>
           
-          <div class="flex items-center gap-2 md:gap-4">
+          <div class="flex items-center gap-1 sm:gap-2 md:gap-4">
             <!-- Theme Selector -->
             <div class="relative">
               <button
                 @click="showThemeMenu = !showThemeMenu"
-                class="btn-secondary text-xs md:text-sm px-4 md:px-6 py-2 md:py-3 flex items-center gap-2 font-semibold"
+                class="btn-secondary text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 flex items-center gap-1 sm:gap-2 font-semibold whitespace-nowrap"
                 :style="{ 
                   backgroundColor: themeStore.themes[themeStore.currentTheme].primary,
                   color: themeStore.currentTheme === 'neon' || themeStore.currentTheme === 'ocean' ? '#000' : '#fff'
                 }"
               >
-                <span> Theme</span>
-                <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': showThemeMenu }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span class="hidden sm:inline">🎨</span>
+                <span>Theme</span>
+                <svg class="w-3 h-3 sm:w-4 sm:h-4 transition-transform" :class="{ 'rotate-180': showThemeMenu }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
               </button>
@@ -33,20 +34,20 @@
               <!-- Dropdown Menu -->
               <div 
                 v-if="showThemeMenu"
-                class="absolute top-full mt-2 right-0 bg-spotify-gray rounded-lg shadow-xl border border-white border-opacity-20 overflow-hidden z-50 min-w-[180px]"
+                class="absolute top-full mt-2 right-0 bg-spotify-gray rounded-lg shadow-xl border border-white border-opacity-20 overflow-hidden z-50 min-w-[160px] sm:min-w-[180px]"
               >
                 <button
                   v-for="(theme, key) in themeStore.themes"
                   :key="key"
                   @click="themeStore.currentTheme = key; showThemeMenu = false"
-                  class="w-full px-4 py-3 text-left text-sm hover:bg-opacity-80 transition-colors flex items-center gap-3"
+                  class="w-full px-3 sm:px-4 py-2 sm:py-3 text-left text-xs sm:text-sm hover:bg-opacity-80 transition-colors flex items-center gap-2 sm:gap-3"
                   :style="{ 
                     backgroundColor: theme.primary,
                     color: key === 'neon' || key === 'ocean' ? '#000' : '#fff'
                   }"
                 >
-                  <span v-if="themeStore.currentTheme === key" class="text-lg">✓</span>
-                  <span v-else class="text-lg opacity-0">✓</span>
+                  <span v-if="themeStore.currentTheme === key" class="text-base sm:text-lg">✓</span>
+                  <span v-else class="text-base sm:text-lg opacity-0">✓</span>
                   <span class="font-semibold">{{ theme.name }}</span>
                 </button>
               </div>
@@ -55,12 +56,14 @@
             <button 
               @click="isAnalyzing ? stopAnalysis() : startAnalysis()" 
               :class="isAnalyzing ? 'btn-secondary' : 'btn-primary'"
-              class="text-xs md:text-sm px-4 md:px-6 py-2 md:py-3"
+              class="text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap"
             >
-              {{ isAnalyzing ? '⏸ Stop' : '▶ Analyze' }}
+              <span class="hidden sm:inline">{{ isAnalyzing ? '⏸ Stop' : '▶ Analyze' }}</span>
+              <span class="sm:hidden">{{ isAnalyzing ? '⏸' : '▶' }}</span>
             </button>
-            <button @click="handleLogout" class="btn-secondary text-xs md:text-sm px-4 md:px-6 py-2 md:py-3">
-              Logout
+            <button @click="handleLogout" class="btn-secondary text-xs px-2 sm:px-4 md:px-6 py-2 md:py-3 whitespace-nowrap">
+              <span class="hidden sm:inline">Logout</span>
+              <span class="sm:hidden">Exit</span>
             </button>
           </div>
         </div>
@@ -341,87 +344,130 @@ const startAnalysis = async () => {
   isLoadingRecommendations.value = true
   
   try {
-    console.log('Starting analysis...')
+    console.log('🎵 Starting instant analysis...')
     
-    let topTracks = null
-    let topArtists = null
+    let tracks = []
+    let artists = []
     
-    // Try all time ranges, starting with the longest (most likely to have data)
+    // Strategy 1: Try all time ranges (fastest, Spotify has this cached)
     const timeRanges = ['long_term', 'medium_term', 'short_term']
     
     for (const timeRange of timeRanges) {
+      if (tracks.length >= 10) break // Got enough data
+      
       try {
-        console.log(`Trying ${timeRange}...`)
+        console.log(`📊 Checking ${timeRange}...`)
         const [tracksResult, artistsResult] = await Promise.all([
-          spotifyService.getUserTopTracks(timeRange, 20),
-          spotifyService.getUserTopArtists(timeRange, 10)
+          spotifyService.getUserTopTracks(timeRange, 30).catch(() => null),
+          spotifyService.getUserTopArtists(timeRange, 15).catch(() => null)
         ])
         
         if (tracksResult?.items?.length > 0) {
-          topTracks = tracksResult
-          topArtists = artistsResult
-          console.log(`✓ Found data in ${timeRange}:`, topTracks.items.length, 'tracks')
-          break
+          tracks = [...tracks, ...tracksResult.items]
+          artists = [...artists, ...(artistsResult?.items || [])]
+          console.log(`✓ Found ${tracksResult.items.length} tracks from ${timeRange}`)
         }
       } catch (error) {
-        console.log(`${timeRange} failed, trying next...`)
+        console.log(`${timeRange} unavailable`)
       }
     }
     
-    // If still no data, try getting saved tracks (liked songs)
-    if (!topTracks?.items?.length) {
-      console.log('No top tracks found, trying saved tracks...')
+    // Strategy 2: Get user's playlists (public AND private)
+    if (tracks.length < 10) {
+      console.log('📚 Checking your playlists...')
       try {
-        const savedTracksResult = await spotifyService.getSavedTracks(20)
-        if (savedTracksResult?.items?.length > 0) {
-          topTracks = {
-            items: savedTracksResult.items.map(item => item.track)
-          }
-          console.log('✓ Using saved tracks:', topTracks.items.length)
+        const playlistsResult = await spotifyService.getUserPlaylists()
+        console.log(`Found ${playlistsResult.items?.length || 0} playlists`)
+        
+        // Get tracks from first few playlists
+        for (const playlist of (playlistsResult.items || []).slice(0, 5)) {
+          if (tracks.length >= 20) break
           
-          // Get artists from saved tracks
-          const artistIds = [...new Set(
-            topTracks.items.flatMap(track => 
-              track.artists.map(a => a.id)
-            )
-          )].slice(0, 10)
-          
-          if (artistIds.length > 0) {
-            const artistsData = await Promise.all(
-              artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
-            )
-            topArtists = {
-              items: artistsData.filter(a => a !== null)
-            }
+          try {
+            const playlistTracks = await spotifyService.getPlaylistTracks(playlist.id, 20)
+            const validTracks = playlistTracks.items
+              .map(item => item.track)
+              .filter(track => track && track.id)
+            
+            tracks = [...tracks, ...validTracks]
+            console.log(`✓ Got ${validTracks.length} tracks from playlist: ${playlist.name}`)
+          } catch (err) {
+            console.log(`Skipping playlist: ${playlist.name}`)
           }
         }
       } catch (error) {
-        console.log('Saved tracks also failed:', error)
+        console.log('Playlists unavailable:', error)
       }
     }
+    
+    // Strategy 3: Liked/Saved tracks
+    if (tracks.length < 10) {
+      console.log('💚 Checking liked songs...')
+      try {
+        const savedResult = await spotifyService.getSavedTracks(50)
+        if (savedResult?.items?.length > 0) {
+          const savedTracks = savedResult.items.map(item => item.track).filter(t => t)
+          tracks = [...tracks, ...savedTracks]
+          console.log(`✓ Found ${savedTracks.length} liked songs`)
+        }
+      } catch (error) {
+        console.log('Saved tracks unavailable')
+      }
+    }
+    
+    // Strategy 4: Recently played
+    if (tracks.length < 10) {
+      console.log('🕐 Checking recently played...')
+      try {
+        const recentResult = await spotifyService.getRecentlyPlayed(50)
+        if (recentResult?.items?.length > 0) {
+          const recentTracks = recentResult.items.map(item => item.track).filter(t => t)
+          tracks = [...tracks, ...recentTracks]
+          console.log(`✓ Found ${recentTracks.length} recent tracks`)
+        }
+      } catch (error) {
+        console.log('Recently played unavailable')
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueTracks = Array.from(
+      new Map(tracks.map(t => [t.id, t])).values()
+    ).slice(0, 50)
+    
+    console.log(`🎯 Total unique tracks found: ${uniqueTracks.length}`)
 
-    console.log('Final top tracks:', topTracks?.items?.length || 0)
-    console.log('Final top artists:', topArtists?.items?.length || 0)
-
-    if (!topTracks?.items?.length) {
-      alert('No listening history found!\n\nPlease:\n1. Listen to some songs on Spotify\n2. Like some songs (heart icon)\n3. Wait a few minutes\n4. Try again!')
+    if (uniqueTracks.length === 0) {
+      alert('😔 No music data found!\n\n✨ Quick fixes:\n1. Like some songs on Spotify (❤️ button)\n2. Listen to a few songs\n3. Create or follow a playlist\n4. Come back and try again!\n\nYour Spotify account needs some activity to generate recommendations.')
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
     }
 
-    // Get audio features
-    const trackIds = topTracks.items.map(t => t.id).filter(id => id)
-    console.log('Fetching audio features for', trackIds.length, 'tracks...')
-    const audioFeatures = await spotifyService.getAudioFeatures(trackIds)
+    // Extract artists from tracks if we don't have enough
+    if (artists.length < 5) {
+      const artistIds = [...new Set(
+        uniqueTracks.flatMap(track => track.artists.map(a => a.id))
+      )].slice(0, 15)
+      
+      const artistsData = await Promise.all(
+        artistIds.map(id => spotifyService.getArtist(id).catch(() => null))
+      )
+      artists = [...artists, ...artistsData.filter(a => a !== null)]
+    }
 
-    console.log('Got audio features:', audioFeatures)
+    console.log(`🎸 Total artists: ${artists.length}`)
+
+    // Get audio features
+    const trackIds = uniqueTracks.map(t => t.id).filter(id => id)
+    console.log('🎼 Analyzing audio features...')
+    const audioFeatures = await spotifyService.getAudioFeatures(trackIds)
 
     // Calculate taste profile
     const features = audioFeatures.audio_features.filter(f => f !== null)
     
     if (features.length === 0) {
-      alert('Could not analyze audio features. Try again!')
+      alert('Could not analyze audio features. Please try again!')
       isAnalyzing.value = false
       isLoadingRecommendations.value = false
       return
@@ -431,20 +477,25 @@ const startAnalysis = async () => {
       avgEnergy: features.reduce((sum, f) => sum + f.energy, 0) / features.length,
       avgDanceability: features.reduce((sum, f) => sum + f.danceability, 0) / features.length,
       avgValence: features.reduce((sum, f) => sum + f.valence, 0) / features.length,
-      topGenre: topArtists?.items?.[0]?.genres?.[0] || 'Mixed'
+      topGenre: artists[0]?.genres?.[0] || 'Mixed'
     }
 
-    console.log('Taste profile:', tasteProfile.value)
+    console.log('✨ Taste profile:', tasteProfile.value)
 
-    // Get recommendations focusing on lesser-known artists
+    // Get recommendations
     await loadRecommendations()
     
     analysisComplete.value = true
-    console.log('Analysis complete! Found', recommendations.value.length, 'recommendations')
+    console.log(`🎉 Analysis complete! Found ${recommendations.value.length} hidden gems!`)
+    
+    // Success message
+    if (uniqueTracks.length < 20) {
+      alert(`✅ Analysis complete!\n\nUsed ${uniqueTracks.length} tracks from your Spotify.\n\n💡 Tip: The more you use Spotify, the better the recommendations get!`)
+    }
   } catch (error) {
-    console.error('Analysis error:', error)
+    console.error('❌ Analysis error:', error)
     console.error('Error details:', error.response?.data || error.message)
-    alert('Error analyzing your taste: ' + error.message + '. Check console for details.')
+    alert(`😕 Something went wrong!\n\nError: ${error.message}\n\nTry:\n1. Logging out and back in\n2. Making sure you have some liked songs\n3. Checking the console for details`)
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
