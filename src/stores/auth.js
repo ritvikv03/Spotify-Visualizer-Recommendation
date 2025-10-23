@@ -55,25 +55,34 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Initiate Spotify login
   async function login() {
-    const codeVerifier = generateRandomString(64)
-    const hashed = await sha256(codeVerifier)
-    const codeChallenge = base64encode(hashed)
+    try {
+      const codeVerifier = generateRandomString(64)
+      const hashed = await sha256(codeVerifier)
+      const codeChallenge = base64encode(hashed)
 
-    // Store code verifier for later
-    window.localStorage.setItem('code_verifier', codeVerifier)
+      // Store code verifier for later
+      window.localStorage.setItem('code_verifier', codeVerifier)
+      
+      console.log('🔐 Starting login flow...')
+      console.log('Redirect URI:', redirectUri)
 
-    const authUrl = new URL('https://accounts.spotify.com/authorize')
-    const params = {
-      response_type: 'code',
-      client_id: clientId,
-      scope: scopes.join(' '),
-      code_challenge_method: 'S256',
-      code_challenge: codeChallenge,
-      redirect_uri: redirectUri,
+      const authUrl = new URL('https://accounts.spotify.com/authorize')
+      const params = {
+        response_type: 'code',
+        client_id: clientId,
+        scope: scopes.join(' '),
+        code_challenge_method: 'S256',
+        code_challenge: codeChallenge,
+        redirect_uri: redirectUri,
+      }
+
+      authUrl.search = new URLSearchParams(params).toString()
+      console.log('🔗 Redirecting to Spotify...')
+      window.location.href = authUrl.toString()
+    } catch (error) {
+      console.error('❌ Login error:', error)
+      alert('Failed to start login process. Please try again.')
     }
-
-    authUrl.search = new URLSearchParams(params).toString()
-    window.location.href = authUrl.toString()
   }
 
   // Handle callback from Spotify

@@ -150,19 +150,37 @@
 
           <!-- Analysis Results -->
           <div v-if="analysisComplete && tasteProfile" class="card">
-            <h3 class="text-xl font-semibold mb-4">Your Music Taste Profile</h3>
+            <h3 class="text-xl font-semibold mb-4">🎭 Your Music DNA</h3>
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Average Popularity</p>
+                <p class="text-sm text-gray-400">Avg. Popularity</p>
                 <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.avgPopularity.toFixed(0) }}%</p>
+                <p class="text-xs text-gray-500 mt-1">{{ tasteProfile.avgPopularity > 60 ? 'Mainstream' : 'Indie Explorer' }}</p>
               </div>
               <div class="bg-spotify-dark p-4 rounded-lg">
-                <p class="text-sm text-gray-400">Top Genre</p>
-                <p class="text-lg font-bold text-spotify-green">{{ tasteProfile.topGenre || 'Mixed' }}</p>
+                <p class="text-sm text-gray-400">Diversity Score</p>
+                <p class="text-2xl font-bold text-spotify-green">{{ (tasteProfile.diversityScore * 100).toFixed(0) }}%</p>
+                <p class="text-xs text-gray-500 mt-1">{{ tasteProfile.diversityScore > 0.7 ? 'Very Diverse' : 'Focused' }}</p>
               </div>
-              <div class="bg-spotify-dark p-4 rounded-lg col-span-2">
+              <div class="bg-spotify-dark p-4 rounded-lg">
+                <p class="text-sm text-gray-400">Primary Genre</p>
+                <p class="text-lg font-bold text-spotify-green">{{ tasteProfile.topGenre }}</p>
+              </div>
+              <div class="bg-spotify-dark p-4 rounded-lg">
                 <p class="text-sm text-gray-400">Tracks Analyzed</p>
                 <p class="text-2xl font-bold text-spotify-green">{{ tasteProfile.tracksAnalyzed }}</p>
+              </div>
+            </div>
+            <div v-if="tasteProfile.topGenres" class="mt-4 pt-4 border-t border-spotify-dark">
+              <p class="text-sm text-gray-400 mb-2">Your Top Genres:</p>
+              <div class="flex flex-wrap gap-2">
+                <span 
+                  v-for="genre in tasteProfile.topGenres" 
+                  :key="genre"
+                  class="px-3 py-1 bg-spotify-green bg-opacity-20 text-spotify-green rounded-full text-xs"
+                >
+                  {{ genre }}
+                </span>
               </div>
             </div>
           </div>
@@ -254,6 +272,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import spotifyService from '../services/spotify'
+import RecommendationEngine from '../services/recommendationEngine'
 import CosmicVisualizer from '../components/Visualizer/CosmicVisualizer.vue'
 import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
 
@@ -355,102 +374,96 @@ const startAnalysis = async () => {
   
   isAnalyzing.value = true
   isLoadingRecommendations.value = true
-  analysisError.value = null // Clear previous errors
+  analysisError.value = null
+  recommendations.value = [] // Clear old recommendations
   
   try {
-    console.log('🎵 Starting analysis...')
+    console.log('🎵 Starting smart analysis...')
     
-    let tracks = []
-    let artists = []
+    let allTracks = []
+    let allArtists = []
     
-    // Get recently played
+    // Get user data from multiple sources
     try {
+      // Try recently played first
       const recentResult = await spotifyService.getRecentlyPlayed(50)
       if (recentResult?.items?.length > 0) {
-        tracks = recentResult.items.map(item => item.track).filter(t => t && t.id && !t.is_local)
-        console.log(`✓ Found ${tracks.length} recent tracks`)
+        allTracks = recentResult.items.map(item => item.track).filter(t => t && t.id && !t.is_local)
+        console.log(`✓ ${allTracks.length} recent tracks`)
       }
     } catch (error) {
-      console.log('Recently played failed:', error.response?.status)
+      console.log('Recently played unavailable')
     }
     
-    // Try top tracks if needed
-    if (tracks.length < 20) {
-      for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
-        try {
-          const tracksResult = await spotifyService.getUserTopTracks(timeRange, 30)
-          if (tracksResult?.items?.length > 0) {
-            tracks = [...tracks, ...tracksResult.items.filter(t => !t.is_local)]
-            console.log(`✓ Found ${tracksResult.items.length} from ${timeRange}`)
-            break
-          }
-        } catch (error) {
-          console.log(`${timeRange} unavailable`)
+    // Get top tracks for better quality seeds
+    for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
+      if (allTracks.length >= 30) break
+      try {
+        const topTracks = await spotifyService.getUserTopTracks(timeRange, 30)
+        if (topTracks?.items?.length > 0) {
+          allTracks = [...allTracks, ...topTracks.items.filter(t => !t.is_local)]
+          console.log(`✓ ${topTracks.items.length} from ${timeRange}`)
+          break
         }
+      } catch (error) {
+        console.log(`${timeRange} unavailable`)
       }
     }
     
     // Get top artists
     for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
-      if (artists.length >= 10) break
+      if (allArtists.length >= 20) break
       try {
-        const artistsResult = await spotifyService.getUserTopArtists(timeRange, 15)
-        if (artistsResult?.items?.length > 0) {
-          artists = [...artists, ...artistsResult.items]
+        const topArtists = await spotifyService.getUserTopArtists(timeRange, 20)
+        if (topArtists?.items?.length > 0) {
+          allArtists = [...allArtists, ...topArtists.items]
+          console.log(`✓ ${topArtists.items.length} artists from ${timeRange}`)
         }
       } catch (error) {
-        // Silent fail, not critical
+        // Silent fail
       }
     }
     
     // Remove duplicates
     const uniqueTracks = Array.from(
-      new Map(tracks.filter(t => t && t.id).map(t => [t.id, t])).values()
-    ).slice(0, 50)
+      new Map(allTracks.filter(t => t && t.id).map(t => [t.id, t])).values()
+    )
     
-    console.log(`🎯 ${uniqueTracks.length} unique tracks found`)
+    const uniqueArtists = Array.from(
+      new Map(allArtists.filter(a => a && a.id).map(a => [a.id, a])).values()
+    )
+    
+    console.log(`🎯 ${uniqueTracks.length} unique tracks, ${uniqueArtists.length} unique artists`)
 
     if (uniqueTracks.length === 0) {
-      analysisError.value = 'No music data found! Play 5-10 songs on Spotify and try again.'
+      analysisError.value = 'No music data found! Play 5-10 songs on Spotify first.'
       return
     }
 
-    // Extract artists if needed
-    if (artists.length < 5) {
-      const artistIds = [...new Set(uniqueTracks.flatMap(t => t.artists?.map(a => a.id) || []))].slice(0, 15)
-      if (artistIds.length > 0) {
-        const artistsData = await Promise.all(artistIds.map(id => spotifyService.getArtist(id).catch(() => null)))
-        artists = [...artists, ...artistsData.filter(a => a !== null)]
-      }
-    }
+    // Use the new recommendation engine!
+    const result = await RecommendationEngine.generateRecommendations(
+      spotifyService,
+      uniqueTracks,
+      uniqueArtists,
+      discoveryFilters.value
+    )
 
-    // Create taste profile
-    const avgPopularity = uniqueTracks.reduce((sum, t) => sum + (t.popularity || 50), 0) / uniqueTracks.length
-    const genreCounts = {}
-    artists.forEach(artist => {
-      artist.genres?.forEach(genre => {
-        genreCounts[genre] = (genreCounts[genre] || 0) + 1
-      })
-    })
-    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Mixed'
-
+    // Update state
+    recommendations.value = result.tracks
     tasteProfile.value = {
-      avgPopularity,
-      topGenre,
-      tracksAnalyzed: uniqueTracks.length
+      avgPopularity: result.analysis.avgPopularity,
+      topGenre: result.analysis.recentTrends[0] || 'Mixed',
+      tracksAnalyzed: uniqueTracks.length,
+      diversityScore: result.analysis.diversityScore,
+      topGenres: result.analysis.recentTrends.slice(0, 3)
     }
-
-    console.log('✨ Taste profile:', tasteProfile.value)
-
-    // Get recommendations
-    await loadRecommendations()
     
     analysisComplete.value = true
-    console.log(`🎉 Found ${recommendations.value.length} recommendations!`)
+    console.log(`🎉 Found ${recommendations.value.length} hidden gems!`)
     
   } catch (error) {
     console.error('❌ Analysis error:', error)
-    analysisError.value = `Analysis failed: ${error.message}. Try logging out and back in.`
+    analysisError.value = `Analysis failed: ${error.message}`
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
@@ -458,54 +471,45 @@ const startAnalysis = async () => {
 }
 
 const loadRecommendations = async () => {
+  // This is now handled by RecommendationEngine in startAnalysis
+  // Keep this function for the "Load More" button
   try {
-    // Get seed tracks
-    let topTracks
-    try {
-      topTracks = await spotifyService.getUserTopTracks('short_term', 5)
-    } catch (error) {
-      topTracks = await spotifyService.getUserTopTracks('long_term', 5)
-    }
+    if (!tasteProfile.value) return
+    
+    isLoadingRecommendations.value = true
+    
+    // Get fresh user data for new seeds
+    const topTracks = await spotifyService.getUserTopTracks('short_term', 10).catch(() => 
+      spotifyService.getUserTopTracks('long_term', 10)
+    )
+    const topArtists = await spotifyService.getUserTopArtists('short_term', 5).catch(() => 
+      spotifyService.getUserTopArtists('long_term', 5)
+    )
     
     if (!topTracks?.items?.length) {
-      console.error('No tracks available for recommendations')
+      console.error('No tracks available for more recommendations')
       return
     }
     
-    const seedTracks = topTracks.items.slice(0, 3).map(t => t.id)
+    // Use recommendation engine
+    const result = await RecommendationEngine.generateRecommendations(
+      spotifyService,
+      topTracks.items,
+      topArtists?.items || [],
+      discoveryFilters.value
+    )
 
-    // Build parameters
-    const params = {
-      seed_tracks: seedTracks,
-      limit: 20,
-      max_popularity: discoveryFilters.value.maxPopularity
-    }
-
-    console.log('🎯 Getting recommendations...')
-
-    // Request recommendations
-    const recs = await spotifyService.getRecommendations(params)
-
-    if (!recs?.tracks) {
-      console.error('No recommendations returned')
-      return
-    }
-
-    // Filter by year if needed
-    let filteredTracks = recs.tracks
-    if (discoveryFilters.value.minYear > 1950 || discoveryFilters.value.maxYear < 2025) {
-      filteredTracks = recs.tracks.filter(track => {
-        if (!track.album?.release_date) return true
-        const year = parseInt(track.album.release_date.substring(0, 4))
-        return year >= discoveryFilters.value.minYear && year <= discoveryFilters.value.maxYear
-      })
-    }
-
-    recommendations.value = [...recommendations.value, ...filteredTracks]
-    console.log(`✓ Got ${filteredTracks.length} recommendations`)
+    // Add new recommendations (avoiding duplicates)
+    const existingIds = new Set(recommendations.value.map(t => t.id))
+    const newTracks = result.tracks.filter(t => !existingIds.has(t.id))
+    
+    recommendations.value = [...recommendations.value, ...newTracks]
+    console.log(`✓ Added ${newTracks.length} more recommendations`)
   } catch (error) {
-    console.error('Error loading recommendations:', error)
-    analysisError.value = 'Failed to load recommendations. Try adjusting filters.'
+    console.error('Error loading more recommendations:', error)
+    analysisError.value = 'Failed to load more. Try adjusting filters.'
+  } finally {
+    isLoadingRecommendations.value = false
   }
 }
 
