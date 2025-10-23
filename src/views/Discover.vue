@@ -36,9 +36,9 @@
           <div class="card">
             <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
                Audio Visualizer
-              <span v-if="isPlaying" class="text-sm font-normal text-spotify-green">(Live)</span>
+              <span v-if="isPlaying" class="text-sm font-normal text-spotify-green">(Live Beat-Synced)</span>
             </h2>
-            <WaveformCanvas :is-playing="isPlaying" />
+            <WaveformCanvas :is-playing="isPlaying" :current-track="currentTrack" :playback-position="playbackPosition" />
           </div>
 
           <!-- Now Playing Card -->
@@ -185,9 +185,11 @@ const tasteProfile = ref(null)
 const recommendations = ref([])
 const currentTrack = ref(null)
 const isPlaying = ref(false)
+const playbackPosition = ref(0)
 
 let player = null
 let deviceId = null
+let positionInterval = null
 
 // Initialize Spotify Web Playback SDK
 onMounted(() => {
@@ -200,6 +202,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (player) {
     player.disconnect()
+  }
+  if (positionInterval) {
+    clearInterval(positionInterval)
   }
 })
 
@@ -225,9 +230,21 @@ const loadSpotifyPlayer = () => {
 
     player.addListener('player_state_changed', state => {
       if (!state) return
-      
+
       currentTrack.value = state.track_window.current_track
       isPlaying.value = !state.paused
+      playbackPosition.value = state.position
+
+      // Update playback position regularly for smooth visualization
+      if (positionInterval) {
+        clearInterval(positionInterval)
+      }
+
+      if (!state.paused) {
+        positionInterval = setInterval(() => {
+          playbackPosition.value += 100 // Update every 100ms
+        }, 100)
+      }
     })
 
     player.connect()
@@ -249,15 +266,30 @@ const checkCurrentPlayback = async () => {
 const startAnalysis = async () => {
   isAnalyzing.value = true
   isLoadingRecommendations.value = true
-  
+
   try {
     console.log('Starting analysis...')
-    
+
     // Get user's top tracks and artists
-    const [topTracks, topArtists] = await Promise.all([
-      spotifyService.getUserTopTracks('short_term', 20),
-      spotifyService.getUserTopArtists('short_term', 10)
-    ])
+    let topTracks, topArtists
+    try {
+      [topTracks, topArtists] = await Promise.all([
+        spotifyService.getUserTopTracks('short_term', 20),
+        spotifyService.getUserTopArtists('short_term', 10)
+      ])
+    } catch (error) {
+      console.error('Error fetching top items:', error)
+      if (error.response?.status === 403) {
+        alert('Permission denied. Please make sure you have a Spotify Premium account and have authorized the app with the required permissions. Try logging out and logging in again.')
+      } else if (error.response?.status === 429) {
+        alert('Rate limit exceeded. Please wait a moment and try again.')
+      } else {
+        alert('Error fetching your top tracks and artists. Please try again. Error: ' + (error.response?.data?.error?.message || error.message))
+      }
+      isAnalyzing.value = false
+      isLoadingRecommendations.value = false
+      return
+    }
 
     console.log('Got top tracks:', topTracks.items.length)
     console.log('Got top artists:', topArtists.items.length)
@@ -277,7 +309,7 @@ const startAnalysis = async () => {
 
     // Calculate taste profile
     const features = audioFeatures.audio_features.filter(f => f !== null)
-    
+
     if (features.length === 0) {
       alert('Could not analyze audio features. Try again!')
       isAnalyzing.value = false
@@ -296,12 +328,16 @@ const startAnalysis = async () => {
 
     // Get recommendations focusing on lesser-known artists
     await loadRecommendations()
-    
+
     analysisComplete.value = true
     console.log('Analysis complete! Found', recommendations.value.length, 'recommendations')
   } catch (error) {
     console.error('Analysis error:', error)
-    alert('Error analyzing your taste: ' + error.message + '. Check console for details.')
+    if (error.response?.status === 403) {
+      alert('Permission denied. Please ensure you are logged in and have granted the necessary permissions.')
+    } else {
+      alert('Error analyzing your taste: ' + (error.response?.data?.error?.message || error.message) + '. Check console for details.')
+    }
   } finally {
     isAnalyzing.value = false
     isLoadingRecommendations.value = false
