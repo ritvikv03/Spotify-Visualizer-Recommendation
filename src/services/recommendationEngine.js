@@ -237,8 +237,12 @@ export class RecommendationEngine {
         console.log('✅ Got recommendations from Spotify API')
 
       } catch (apiError) {
-        // Check if it's the deprecated endpoint error
-        if (apiError.isDeprecatedEndpoint || apiError.response?.status === 403) {
+        // Check if it's the deprecated endpoint error (403 or 404)
+        const isDeprecated = apiError.isDeprecatedEndpoint ||
+                           apiError.response?.status === 403 ||
+                           apiError.response?.status === 404
+
+        if (isDeprecated) {
           console.log('⚠️ Spotify recommendations endpoint unavailable, using fallback algorithm')
           recommendedTracks = await this.generateFromLibrary(spotifyService, tracks, artists, analysis, filters)
         } else {

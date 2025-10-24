@@ -47,6 +47,8 @@ On **November 27, 2024**, Spotify deprecated several API endpoints including:
 
 These endpoints are **no longer available** for apps in Development Mode.
 
+**Note:** The deprecated endpoints may return either **403 (Forbidden)** or **404 (Not Found)** errors depending on your app's status and creation date. Both errors trigger the same fallback algorithm.
+
 ### Our Solution
 
 This app now uses a **custom recommendation algorithm** that:
@@ -88,6 +90,22 @@ This app now uses a **custom recommendation algorithm** that:
 **Cause:** You're trying to use an account that hasn't been added to the allowlist.
 
 **Solution:** See the "Add Your Account to the Allowlist" section above.
+
+---
+
+### Error: "Request failed with status code 404"
+
+**Cause:** The Spotify API endpoint has been deprecated or removed. This is the same issue as the 403 error - certain endpoints are no longer available.
+
+**Solution:** The app automatically falls back to a custom recommendation algorithm. This is expected behavior and should not prevent the app from working.
+
+**What you'll see in console:**
+```
+⛔ 404 Error Detected
+Endpoint: /recommendations
+⚠️ Spotify recommendations endpoint unavailable, using fallback algorithm
+🔄 Using fallback: generating recommendations from library
+```
 
 ---
 
