@@ -358,5 +358,16 @@ export default {
       console.error('Error fetching audio analysis:', error)
       throw error
     }
+  },
+
+  // Get audio features for a single track (tempo, energy, etc.)
+  async getTrackAudioFeatures(trackId) {
+    try {
+      const response = await spotifyApi.get(`/audio-features/${trackId}`)
+      return response.data
+    } catch (error) {
+      console.error('Error fetching track audio features:', error)
+      throw error
+    }
   }
 }

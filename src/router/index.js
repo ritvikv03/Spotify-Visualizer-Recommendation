@@ -17,7 +17,7 @@ const routes = [
   {
     path: '/discover',
     name: 'Discover',
-    component: () => import('../views/Discover.vue'),
+    component: () => import('../views/DiscoverFullscreen.vue'),
     meta: { requiresAuth: true }
   }
 ]
