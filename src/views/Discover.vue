@@ -221,6 +221,12 @@
 
         <!-- Right Column - Recommendations -->
         <div class="space-y-6">
+          <!-- Serendipity Slider (ML Feature) -->
+          <SerendipitySlider
+            v-model="serendipityLevel"
+            @change="handleSerendipityChange"
+          />
+
           <!-- Discovery Filters -->
           <DiscoveryFilters @update="updateFilters" />
 
@@ -244,24 +250,36 @@
             </div>
 
             <div v-else class="space-y-3 max-h-[600px] overflow-y-auto">
-              <div 
-                v-for="track in recommendations" 
+              <div
+                v-for="track in recommendations"
                 :key="track.id"
-                class="bg-spotify-dark p-3 rounded-lg hover:bg-opacity-60 transition-all hover:scale-[1.02] relative group"
+                class="bg-spotify-dark p-3 rounded-lg hover:bg-opacity-60 transition-all relative group"
               >
-                <div class="flex items-center gap-3">
-                  <img 
-                    v-if="track.album?.images?.[2]?.url" 
-                    :src="track.album.images[2].url" 
+                <div class="flex items-start gap-3 mb-2">
+                  <img
+                    v-if="track.album?.images?.[2]?.url"
+                    :src="track.album.images[2].url"
                     alt="Album art"
-                    class="w-12 h-12 rounded cursor-pointer"
+                    class="w-12 h-12 rounded cursor-pointer flex-shrink-0"
                     @click="playTrack(track)"
                   />
                   <div class="flex-1 min-w-0 cursor-pointer" @click="playTrack(track)">
                     <p class="font-semibold truncate">{{ track.name }}</p>
                     <p class="text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+                    <!-- ML: Discovery Score Badge -->
+                    <div class="mt-1">
+                      <DiscoveryScoreBadge
+                        v-if="track.discoveryScore !== undefined"
+                        :score="track.discoveryScore"
+                        :popularity="track.popularity || 0"
+                      />
+                      <span v-else class="text-xs text-spotify-green">
+                        {{ track.popularity }}% popular
+                      </span>
+                    </div>
                   </div>
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-col items-end gap-2">
+                    <!-- Original favorite button -->
                     <button
                       @click="toggleFavorite(track)"
                       class="hover:scale-125 transition-transform"
@@ -271,11 +289,21 @@
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                       </svg>
                     </button>
-                    <div class="text-xs text-spotify-green">
-                      {{ track.popularity }}%
-                    </div>
                   </div>
                 </div>
+
+                <!-- ML: Feedback Buttons -->
+                <FeedbackButtons
+                  v-if="useMLEngine"
+                  :track="track"
+                  :context="{
+                    reason: track.reason,
+                    similarity: track.similarity,
+                    serendipityLevel: serendipityLevel
+                  }"
+                  @feedback="handleFeedback"
+                  class="mt-2"
+                />
               </div>
             </div>
 
@@ -317,14 +345,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import spotifyService from '../services/spotify'
 import RecommendationEngine from '../services/recommendationEngine'
+import mlRecommendationEngine from '../services/mlRecommendationEngine'
+import feedbackLearningEngine from '../services/feedbackLearningEngine'
 import MusicVisualizer from '../components/Visualizer/MusicVisualizer.vue'
 import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
+import SerendipitySlider from '../components/Discovery/SerendipitySlider.vue'
+import FeedbackButtons from '../components/Discovery/FeedbackButtons.vue'
+import DiscoveryScoreBadge from '../components/Discovery/DiscoveryScoreBadge.vue'
+import AudioSimilarityRadar from '../components/Discovery/AudioSimilarityRadar.vue'
 import IconPalette from '../components/icons/IconPalette.vue'
 import IconAnalyze from '../components/icons/IconAnalyze.vue'
 import IconMusic from '../components/icons/IconMusic.vue'
@@ -345,6 +379,9 @@ const savedTracks = ref([]) // Favorited tracks
 const currentTrack = ref(null)
 const isPlaying = ref(false)
 const showThemeMenu = ref(false)
+const serendipityLevel = ref(0.3) // ML: Exploration level (0-1)
+const userAudioPreferences = ref(null) // ML: Learned audio preferences
+const useMLEngine = ref(true) // Toggle between ML and basic engine
 const discoveryFilters = ref({
   maxPopularity: 50,
   targetEnergy: 0.5,
@@ -360,12 +397,23 @@ const discoveryFilters = ref({
 let player = null
 let deviceId = null
 
-// Initialize Spotify Web Playback SDK
-onMounted(() => {
+// Initialize Spotify Web Playback SDK and ML Engines
+onMounted(async () => {
   loadSpotifyPlayer()
   checkCurrentPlayback()
   themeStore.loadSavedTheme()
-  
+
+  // Initialize ML engines
+  await mlRecommendationEngine.initialize()
+  await feedbackLearningEngine.initialize()
+
+  // Load learned preferences if available
+  const learnedPrefs = await feedbackLearningEngine.getLearnedPreferences()
+  if (learnedPrefs) {
+    userAudioPreferences.value = learnedPrefs
+    console.log('✅ Loaded learned preferences:', learnedPrefs)
+  }
+
   // Close theme menu when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.relative')) {
@@ -494,22 +542,63 @@ const startAnalysis = async () => {
       return
     }
 
-    // Use the new recommendation engine!
-    const result = await RecommendationEngine.generateRecommendations(
-      spotifyService,
-      uniqueTracks,
-      uniqueArtists,
-      discoveryFilters.value
-    )
+    // Try to get saved tracks for ML engine
+    let savedTracksData = []
+    try {
+      const saved = await spotifyService.getSavedTracks(50)
+      savedTracksData = saved?.items || []
+    } catch (error) {
+      console.log('Saved tracks unavailable')
+    }
 
-    // Update state
-    recommendations.value = result.tracks
-    tasteProfile.value = {
-      avgPopularity: result.analysis.avgPopularity,
-      topGenre: result.analysis.recentTrends[0] || 'Mixed',
-      tracksAnalyzed: uniqueTracks.length,
-      diversityScore: result.analysis.diversityScore,
-      topGenres: result.analysis.recentTrends.slice(0, 3)
+    // Use ML recommendation engine if enabled
+    let result
+    if (useMLEngine.value) {
+      console.log('🧠 Using ML Recommendation Engine...')
+      result = await mlRecommendationEngine.generateAdvancedRecommendations({
+        userTracks: uniqueTracks,
+        userArtists: uniqueArtists,
+        savedTracks: savedTracksData,
+        recentTracks: allTracks.slice(0, 50),
+        serendipityLevel: serendipityLevel.value,
+        maxPopularity: discoveryFilters.value.maxPopularity,
+        limit: 50
+      })
+
+      // Extract recommendations
+      recommendations.value = result.recommendations
+      userAudioPreferences.value = result.metadata.avgFeatures
+
+      // Filter out disliked tracks
+      recommendations.value = await feedbackLearningEngine.filterRecommendations(
+        recommendations.value
+      )
+
+      tasteProfile.value = {
+        avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
+        topGenre: result.metadata.patterns?.recentTrends?.[0] || 'Mixed',
+        tracksAnalyzed: uniqueTracks.length,
+        diversityScore: uniqueArtists.length / uniqueTracks.length,
+        topGenres: Object.keys(result.metadata.patterns || {}).slice(0, 3)
+      }
+    } else {
+      // Fallback to basic engine
+      console.log('📊 Using Basic Recommendation Engine...')
+      result = await RecommendationEngine.generateRecommendations(
+        spotifyService,
+        uniqueTracks,
+        uniqueArtists,
+        discoveryFilters.value
+      )
+
+      recommendations.value = result.tracks
+      tasteProfile.value = {
+        avgPopularity: result.analysis.avgPopularity,
+        topGenre: result.analysis.recentTrends[0] || 'Mixed',
+        tracksAnalyzed: uniqueTracks.length,
+        diversityScore: result.analysis.diversityScore,
+        topGenres: result.analysis.recentTrends.slice(0, 3)
+      }
     }
     
     analysisComplete.value = true
@@ -671,21 +760,21 @@ const isFavorited = (track) => {
 
 const saveToPlaylist = async () => {
   if (savedTracks.value.length === 0) return
-  
+
   isSavingPlaylist.value = true
-  
+
   try {
     const userId = authStore.user.id
     const playlistName = `Hidden Gems - ${new Date().toLocaleDateString()}`
     const description = `Discovered ${savedTracks.value.length} hidden gems with Discovery Studio`
-    
+
     // Create playlist
     const playlist = await spotifyService.createPlaylist(userId, playlistName, description, true)
-    
+
     // Add tracks
     const trackUris = savedTracks.value.map(t => t.uri)
     await spotifyService.addTracksToPlaylist(playlist.id, trackUris)
-    
+
     alert(`✅ Saved ${savedTracks.value.length} tracks to "${playlistName}"!\n\nCheck your Spotify library!`)
     savedTracks.value = []
   } catch (error) {
@@ -693,6 +782,35 @@ const saveToPlaylist = async () => {
     alert('Error saving playlist. Check console for details.')
   } finally {
     isSavingPlaylist.value = false
+  }
+}
+
+// ML: Handle serendipity slider changes
+const handleSerendipityChange = async (newLevel) => {
+  console.log('🎚️ Serendipity level changed to:', newLevel)
+  if (analysisComplete.value && recommendations.value.length > 0) {
+    // Optionally refresh recommendations with new serendipity level
+    console.log('Refresh recommendations with new serendipity level')
+  }
+}
+
+// ML: Handle feedback (like/dislike)
+const handleFeedback = async ({ action, track }) => {
+  console.log(`📊 Feedback: ${action} on ${track.name}`)
+
+  if (action === 'like') {
+    // Track is already recorded by FeedbackButtons component
+    console.log('💚 Track liked, AI learning...')
+  } else if (action === 'dislike') {
+    // Remove from current recommendations
+    recommendations.value = recommendations.value.filter(t => t.id !== track.id)
+    console.log('👎 Track removed from recommendations')
+  }
+
+  // Reload learned preferences
+  const learnedPrefs = await feedbackLearningEngine.getLearnedPreferences()
+  if (learnedPrefs) {
+    userAudioPreferences.value = learnedPrefs
   }
 }
 </script>
