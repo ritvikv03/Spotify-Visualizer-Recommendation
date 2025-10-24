@@ -37,17 +37,25 @@
               </svg>
             </button>
 
-            <div v-if="showModeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[200px]">
+            <div v-if="showModeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[280px]">
+              <div class="px-3 py-2 border-b border-white border-opacity-10">
+                <p class="text-xs text-gray-400 font-medium">Visualization Modes</p>
+              </div>
               <button
                 v-for="mode in visualizerModes"
                 :key="mode.id"
                 @click="currentMode = mode.id; showModeMenu = false"
-                class="dropdown-item"
+                class="dropdown-item-detailed"
                 :class="{ 'active': currentMode === mode.id }"
               >
-                <component :is="mode.icon" :size="18" />
-                <span>{{ mode.name }}</span>
-                <svg v-if="currentMode === mode.id" class="w-4 h-4 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="flex items-start gap-3 flex-1">
+                  <component :is="mode.icon" :size="20" :class="currentMode === mode.id ? 'text-white' : 'text-gray-400'" />
+                  <div class="flex-1">
+                    <p class="text-sm font-medium">{{ mode.name }}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">{{ mode.description }}</p>
+                  </div>
+                </div>
+                <svg v-if="currentMode === mode.id" class="w-4 h-4 flex-shrink-0" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
               </button>
@@ -221,7 +229,7 @@ const isPlaying = ref(false)
 const currentTrack = ref(null)
 const audioFeatures = ref(null)
 const recommendations = ref([])
-const currentMode = ref('spectrum')
+const currentMode = ref('kaleidosync')
 const showModeMenu = ref(false)
 const showThemeMenu = ref(false)
 const showSidebar = ref(false)
@@ -230,9 +238,11 @@ const themeDropdownRef = ref(null)
 const isGeneratingPlaylist = ref(false)
 
 const visualizerModes = [
-  { id: 'spectrum', name: 'Frequency Spectrum', icon: IconSpectrum },
-  { id: 'particles', name: 'Particle Field', icon: IconParticles },
-  { id: 'waveform', name: 'Waveform Rings', icon: IconWaveform }
+  { id: 'kaleidosync', name: 'Kaleidosync', icon: IconSpectrum, description: 'Classic 12-fold symmetry' },
+  { id: 'flower', name: 'Flower', icon: IconParticles, description: 'Organic petal pattern' },
+  { id: 'bars', name: 'Radial Bars', icon: IconWaveform, description: 'Circular spectrum' },
+  { id: 'tunnel', name: 'Tunnel', icon: IconGem, description: '3D depth effect' },
+  { id: 'waves', name: 'Waves', icon: IconMusic, description: 'Flowing sine waves' }
 ]
 
 let player = null
@@ -534,6 +544,16 @@ const generatePlaylist = async () => {
 
 .dropdown-item.active {
   @apply bg-white bg-opacity-10;
+}
+
+.dropdown-item-detailed {
+  @apply w-full px-4 py-3 text-left text-white
+         hover:bg-white hover:bg-opacity-10 transition-all duration-150
+         flex items-center gap-3;
+}
+
+.dropdown-item-detailed.active {
+  @apply bg-white bg-opacity-15;
 }
 
 .glass-sidebar {

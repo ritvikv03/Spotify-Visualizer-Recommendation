@@ -8,6 +8,9 @@ on:
 jobs:
   create-pull-request:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     # Only run if PR doesn't already exist
     steps:
       - name: Checkout code
