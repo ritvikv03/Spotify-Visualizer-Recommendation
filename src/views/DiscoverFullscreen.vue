@@ -129,26 +129,55 @@
           <p class="text-gray-400">Click Analyze to discover tracks</p>
         </div>
 
-        <div v-else class="space-y-3">
-          <div
-            v-for="track in recommendations"
-            :key="track.id"
-            @click="playTrack(track)"
-            class="glass-track-card p-3 rounded-lg cursor-pointer hover:scale-[1.02] transition-transform"
+        <div v-else>
+          <!-- Generate Playlist Button -->
+          <button
+            @click="generatePlaylist"
+            :disabled="isGeneratingPlaylist"
+            class="w-full glass-btn-primary px-4 py-3 mb-4 flex items-center justify-center gap-2"
           >
-            <div class="flex items-center gap-3">
-              <img
-                v-if="track.album?.images?.[2]?.url"
-                :src="track.album.images[2].url"
-                alt="Album art"
-                class="w-12 h-12 rounded"
-              />
-              <div class="flex-1 min-w-0">
-                <p class="font-semibold text-white truncate text-sm">{{ track.name }}</p>
-                <p class="text-xs text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+            <svg class="w-5 h-5" :class="{ 'animate-spin': isGeneratingPlaylist }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>{{ isGeneratingPlaylist ? 'Creating Playlist...' : 'Save as Playlist' }}</span>
+          </button>
+
+          <!-- Track List -->
+          <div class="space-y-3">
+            <div
+              v-for="track in recommendations"
+              :key="track.id"
+              class="glass-track-card p-3 rounded-lg transition-all hover:bg-opacity-15"
+            >
+              <!-- Click area for playing -->
+              <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer mb-2">
+                <img
+                  v-if="track.album?.images?.[2]?.url"
+                  :src="track.album.images[2].url"
+                  alt="Album art"
+                  class="w-12 h-12 rounded flex-shrink-0"
+                />
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold text-white truncate text-sm">{{ track.name }}</p>
+                  <p class="text-xs text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+                </div>
+                <div class="text-xs" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
+                  {{ track.popularity }}%
+                </div>
               </div>
-              <div class="text-xs" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
-                {{ track.popularity }}%
+
+              <!-- Action Buttons -->
+              <div class="flex items-center gap-2">
+                <button
+                  @click="toggleLikeTrack(track)"
+                  class="flex-1 text-xs px-3 py-2 rounded-lg transition-all"
+                  :class="track.isLiked ? 'bg-green-500 bg-opacity-20 text-green-400' : 'bg-white bg-opacity-5 text-gray-400 hover:bg-opacity-10'"
+                >
+                  <svg class="w-4 h-4 inline mr-1" :fill="track.isLiked ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                  </svg>
+                  {{ track.isLiked ? 'Liked' : 'Like' }}
+                </button>
               </div>
             </div>
           </div>
@@ -198,6 +227,7 @@ const showThemeMenu = ref(false)
 const showSidebar = ref(false)
 const modeDropdownRef = ref(null)
 const themeDropdownRef = ref(null)
+const isGeneratingPlaylist = ref(false)
 
 const visualizerModes = [
   { id: 'spectrum', name: 'Frequency Spectrum', icon: IconSpectrum },
@@ -342,7 +372,24 @@ const startAnalysis = async () => {
       { maxPopularity: 50 }
     )
 
-    recommendations.value = result.tracks
+    // Sort recommendations by popularity in ascending order (least popular first)
+    const sortedTracks = result.tracks.sort((a, b) => a.popularity - b.popularity)
+
+    // Check which tracks are already liked
+    try {
+      const trackIds = sortedTracks.map(t => t.id)
+      const likedStatus = await spotifyService.checkSavedTracks(trackIds)
+      sortedTracks.forEach((track, index) => {
+        track.isLiked = likedStatus[index] || false
+      })
+    } catch (error) {
+      console.error('Error checking liked status:', error)
+      sortedTracks.forEach(track => {
+        track.isLiked = false
+      })
+    }
+
+    recommendations.value = sortedTracks
     showSidebar.value = true
   } catch (error) {
     console.error('Analysis error:', error)
@@ -408,6 +455,55 @@ const previousTrack = async () => {
 const handleLogout = () => {
   authStore.logout()
   router.push('/')
+}
+
+const toggleLikeTrack = async (track) => {
+  try {
+    if (track.isLiked) {
+      await spotifyService.removeTrack(track.id)
+      track.isLiked = false
+    } else {
+      await spotifyService.saveTrack(track.id)
+      track.isLiked = true
+    }
+  } catch (error) {
+    console.error('Error toggling like:', error)
+    alert('Failed to update liked status')
+  }
+}
+
+const generatePlaylist = async () => {
+  if (isGeneratingPlaylist.value || recommendations.value.length === 0) return
+
+  isGeneratingPlaylist.value = true
+
+  try {
+    // Get current user
+    const user = await spotifyService.getCurrentUser()
+
+    // Create playlist
+    const timestamp = new Date().toLocaleDateString()
+    const playlistName = `Discovery Studio - ${timestamp}`
+    const playlistDescription = `Hidden gems discovered on ${timestamp} with Discovery Studio. Featuring ${recommendations.value.length} tracks sorted by uniqueness.`
+
+    const playlist = await spotifyService.createPlaylist(
+      user.id,
+      playlistName,
+      playlistDescription,
+      true
+    )
+
+    // Add tracks to playlist
+    const trackUris = recommendations.value.map(track => track.uri)
+    await spotifyService.addTracksToPlaylist(playlist.id, trackUris)
+
+    alert(`Playlist "${playlistName}" created successfully with ${recommendations.value.length} tracks!`)
+  } catch (error) {
+    console.error('Error generating playlist:', error)
+    alert(`Failed to create playlist: ${error.message}`)
+  } finally {
+    isGeneratingPlaylist.value = false
+  }
 }
 </script>
 
