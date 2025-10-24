@@ -1,8 +1,11 @@
 <template>
-  <div class="relative w-full h-full bg-black overflow-hidden">
+  <div
+    class="relative w-full h-full bg-black overflow-hidden"
+    @mousemove="handleMouseMove"
+  >
     <canvas ref="canvas" class="w-full h-full"></canvas>
 
-    <!-- Bottom Control Bar -->
+    <!-- Bottom Control Bar (always visible) -->
     <div class="absolute bottom-0 left-0 right-0 z-20">
       <!-- Audio Level Bars -->
       <div class="flex items-end justify-center gap-1 px-8 pb-4">
@@ -15,49 +18,55 @@
         ></div>
       </div>
 
-      <!-- Now Playing Card -->
-      <div v-if="currentTrack" class="glass-panel mx-auto max-w-2xl mb-6 px-6 py-4">
-        <div class="flex items-center gap-6">
+      <!-- Playback Controls -->
+      <div class="flex items-center justify-center gap-3 mb-6">
+        <button @click="$emit('previous')" class="control-btn">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+          </svg>
+        </button>
+
+        <button @click="$emit('toggle-play')" class="control-btn-large">
+          <svg v-if="!isPlaying" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg v-else class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 4h4v16H6zm8 0h4v16h-4z"/>
+          </svg>
+        </button>
+
+        <button @click="$emit('next')" class="control-btn">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Now Playing Card (Bottom Right - appears on mouse move) -->
+    <transition name="slide-fade">
+      <div
+        v-if="currentTrack && showNowPlaying"
+        class="absolute bottom-24 right-6 z-20 glass-panel p-4 max-w-xs"
+      >
+        <div class="flex items-start gap-3">
           <!-- Album Art -->
           <img
             v-if="currentTrack.album?.images?.[0]?.url"
             :src="currentTrack.album.images[0].url"
             alt="Album art"
-            class="w-20 h-20 rounded-lg shadow-2xl"
+            class="w-16 h-16 rounded-lg shadow-2xl flex-shrink-0"
           />
 
           <!-- Track Info -->
           <div class="flex-1 min-w-0">
-            <h3 class="text-lg font-bold truncate text-white">{{ currentTrack.name }}</h3>
-            <p class="text-sm text-gray-300 truncate">{{ currentTrack.artists?.map(a => a.name).join(', ') }}</p>
-          </div>
-
-          <!-- Playback Controls -->
-          <div class="flex items-center gap-3">
-            <button @click="$emit('previous')" class="control-btn">
-              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-              </svg>
-            </button>
-
-            <button @click="$emit('toggle-play')" class="control-btn-large">
-              <svg v-if="!isPlaying" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-              <svg v-else class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 4h4v16H6zm8 0h4v16h-4z"/>
-              </svg>
-            </button>
-
-            <button @click="$emit('next')" class="control-btn">
-              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-              </svg>
-            </button>
+            <h3 class="text-sm font-bold truncate text-white">{{ currentTrack.name }}</h3>
+            <p class="text-xs text-gray-300 truncate">{{ currentTrack.artists?.map(a => a.name).join(', ') }}</p>
+            <p v-if="currentTrack.album?.name" class="text-xs text-gray-400 truncate mt-1">{{ currentTrack.album.name }}</p>
           </div>
         </div>
       </div>
-    </div>
+    </transition>
   </div>
 </template>
 
@@ -82,6 +91,17 @@ const canvas = ref(null)
 const bassLevel = ref(0)
 const midLevel = ref(0)
 const trebleLevel = ref(0)
+const showNowPlaying = ref(false)
+
+let mouseMovementTimer = null
+
+const handleMouseMove = () => {
+  showNowPlaying.value = true
+  clearTimeout(mouseMovementTimer)
+  mouseMovementTimer = setTimeout(() => {
+    showNowPlaying.value = false
+  }, 3000)
+}
 
 // Create 100 audio level bars for visualization
 const audioLevelBars = computed(() => {
@@ -274,62 +294,71 @@ const initMode = (mode) => {
 }
 
 const createSpectrum = () => {
-  const barCount = 128
-  const radius = 70
+  // Kaleidoscope-inspired: Multiple layers of spectrum bars
+  const layers = 3
+  const barsPerLayer = 96
 
-  for (let i = 0; i < barCount; i++) {
-    const angle = (i / barCount) * Math.PI * 2
-    const barWidth = (Math.PI * 2 * radius) / barCount * 0.85
+  for (let layer = 0; layer < layers; layer++) {
+    const radius = 50 + layer * 30
+    const barCount = barsPerLayer + layer * 24
 
-    const geometry = new THREE.BoxGeometry(barWidth, 1, 4)
-    const hue = (i / barCount) * 360
-    const material = new THREE.MeshPhongMaterial({
-      color: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
-      emissive: new THREE.Color(`hsl(${hue}, 100%, 40%)`),
-      emissiveIntensity: 1.2,
-      shininess: 150,
-      transparent: true,
-      opacity: 0.95
-    })
+    for (let i = 0; i < barCount; i++) {
+      const angle = (i / barCount) * Math.PI * 2
+      const barWidth = (Math.PI * 2 * radius) / barCount * 0.9
+      const barDepth = 6 + layer * 2
 
-    const bar = new THREE.Mesh(geometry, material)
-    bar.position.x = Math.cos(angle) * radius
-    bar.position.z = Math.sin(angle) * radius
-    bar.rotation.y = -angle
+      const geometry = new THREE.BoxGeometry(barWidth, 1, barDepth)
+      const hue = (i / barCount * 360 + layer * 120) % 360
+      const material = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
+        emissive: new THREE.Color(`hsl(${hue}, 100%, 40%)`),
+        emissiveIntensity: 1.5,
+        shininess: 200,
+        transparent: true,
+        opacity: 0.85 - layer * 0.1
+      })
 
-    bar.userData = {
-      angle,
-      baseRadius: radius,
-      hue,
-      frequencyIndex: Math.floor((i / barCount) * bufferLength)
+      const bar = new THREE.Mesh(geometry, material)
+      bar.position.x = Math.cos(angle) * radius
+      bar.position.z = Math.sin(angle) * radius
+      bar.rotation.y = -angle
+
+      bar.userData = {
+        angle,
+        baseRadius: radius,
+        hue,
+        layer,
+        frequencyIndex: Math.floor((i / barCount) * (bufferLength || 512))
+      }
+
+      scene.add(bar)
+      spectrumBars.push(bar)
     }
-
-    scene.add(bar)
-    spectrumBars.push(bar)
   }
 }
 
 const createParticleField = () => {
-  const particleCount = 5000
+  // More immersive particle field filling the screen
+  const particleCount = 8000
 
   for (let i = 0; i < particleCount; i++) {
-    const size = Math.random() * 1.2 + 0.3
-    const geometry = new THREE.SphereGeometry(size, 6, 6)
+    const size = Math.random() * 1.5 + 0.4
+    const geometry = new THREE.SphereGeometry(size, 8, 8)
 
     const hue = Math.random() * 360
     const material = new THREE.MeshPhongMaterial({
       color: new THREE.Color(`hsl(${hue}, 100%, 60%)`),
       emissive: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 2.0,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.95
     })
 
     const particle = new THREE.Mesh(geometry, material)
 
     const theta = Math.random() * Math.PI * 2
     const phi = Math.acos(2 * Math.random() - 1)
-    const radius = 40 + Math.random() * 80
+    const radius = 30 + Math.random() * 120
 
     particle.position.x = radius * Math.sin(phi) * Math.cos(theta)
     particle.position.y = radius * Math.sin(phi) * Math.sin(theta)
@@ -337,9 +366,9 @@ const createParticleField = () => {
 
     particle.userData = {
       velocity: new THREE.Vector3(
-        (Math.random() - 0.5) * 0.4,
-        (Math.random() - 0.5) * 0.4,
-        (Math.random() - 0.5) * 0.4
+        (Math.random() - 0.5) * 0.5,
+        (Math.random() - 0.5) * 0.5,
+        (Math.random() - 0.5) * 0.5
       ),
       hue,
       baseSize: size,
@@ -352,33 +381,36 @@ const createParticleField = () => {
 }
 
 const createWaveformRings = () => {
-  const ringCount = 20
+  // More immersive waveform rings filling the viewport
+  const ringCount = 35
 
   for (let i = 0; i < ringCount; i++) {
-    const segments = 256
-    const radius = 25 + i * 5
-    const geometry = new THREE.TorusGeometry(radius, 1.2, 20, segments)
+    const segments = 320
+    const radius = 20 + i * 4.5
+    const tubeRadius = 1.5
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 24, segments)
 
     const hue = (i / ringCount) * 360
     const material = new THREE.MeshPhongMaterial({
       color: new THREE.Color(`hsl(${hue}, 100%, 50%)`),
       emissive: new THREE.Color(`hsl(${hue}, 100%, 40%)`),
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 1.8,
       transparent: true,
-      opacity: 0.8,
-      wireframe: false
+      opacity: 0.85,
+      wireframe: false,
+      shininess: 150
     })
 
     const ring = new THREE.Mesh(geometry, material)
     ring.rotation.x = Math.PI / 2
-    ring.position.y = (i - ringCount / 2) * 4
+    ring.position.y = (i - ringCount / 2) * 3.5
 
     ring.userData = {
       baseRadius: radius,
       baseY: ring.position.y,
       hue,
-      phaseOffset: i * 0.3,
-      frequencyIndex: Math.floor((i / ringCount) * bufferLength)
+      phaseOffset: i * 0.25,
+      frequencyIndex: Math.floor((i / ringCount) * (bufferLength || 512))
     }
 
     scene.add(ring)
@@ -436,22 +468,28 @@ const updateSpectrum = (time) => {
 
     if (analyser && dataArray) {
       const freqValue = dataArray[bar.userData.frequencyIndex] / 255
-      intensity = freqValue * 5 + 0.5
+      intensity = freqValue * 6 + 0.5
     } else {
       const freqPos = i / spectrumBars.length
-      if (freqPos < 0.15) intensity = bassLevel.value * 5 + 0.5
-      else if (freqPos < 0.5) intensity = midLevel.value * 5 + 0.5
-      else intensity = trebleLevel.value * 5 + 0.5
+      if (freqPos < 0.15) intensity = bassLevel.value * 6 + 0.5
+      else if (freqPos < 0.5) intensity = midLevel.value * 6 + 0.5
+      else intensity = trebleLevel.value * 6 + 0.5
     }
 
-    const targetHeight = intensity * 50
-    bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetHeight, 0.25)
+    // Different height multipliers for different layers for depth effect
+    const layerMultiplier = 1 + bar.userData.layer * 0.3
+    const targetHeight = intensity * 40 * layerMultiplier
+    bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetHeight, 0.3)
     bar.position.y = bar.scale.y / 2
 
-    const hue = (bar.userData.hue + intensity * 80) % 360
+    // Kaleidoscope color rotation effect
+    const hue = (bar.userData.hue + time * 20 + intensity * 100) % 360
     bar.material.color.setHSL(hue / 360, 1, 0.5)
     bar.material.emissive.setHSL(hue / 360, 1, 0.4)
-    bar.material.emissiveIntensity = 0.8 + intensity * 0.7
+    bar.material.emissiveIntensity = 1.0 + intensity * 0.8
+
+    // Subtle rotation for kaleidoscope effect
+    bar.rotation.y = -bar.userData.angle + time * (0.1 + bar.userData.layer * 0.05)
   })
 }
 
@@ -536,10 +574,11 @@ const onWindowResize = () => {
 
 <style scoped>
 .glass-panel {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .control-btn {
@@ -552,5 +591,23 @@ const onWindowResize = () => {
   @apply w-16 h-16 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30
          flex items-center justify-center transition-all duration-200
          hover:scale-110 text-white shadow-xl;
+}
+
+.slide-fade-enter-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from {
+  transform: translateX(20px);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateX(20px);
+  opacity: 0;
 }
 </style>

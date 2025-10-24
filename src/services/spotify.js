@@ -378,5 +378,55 @@ export default {
       console.error('Error fetching track audio features:', error)
       throw error
     }
+  },
+
+  // Save track to user's liked songs
+  async saveTrack(trackId) {
+    try {
+      await spotifyApi.put('/me/tracks', null, {
+        params: { ids: trackId }
+      })
+      return true
+    } catch (error) {
+      console.error('Error saving track:', error)
+      throw error
+    }
+  },
+
+  // Remove track from user's liked songs
+  async removeTrack(trackId) {
+    try {
+      await spotifyApi.delete('/me/tracks', {
+        params: { ids: trackId }
+      })
+      return true
+    } catch (error) {
+      console.error('Error removing track:', error)
+      throw error
+    }
+  },
+
+  // Check if tracks are saved in user's library
+  async checkSavedTracks(trackIds) {
+    try {
+      const response = await spotifyApi.get('/me/tracks/contains', {
+        params: { ids: trackIds.join(',') }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error checking saved tracks:', error)
+      throw error
+    }
+  },
+
+  // Get current user's profile
+  async getCurrentUser() {
+    try {
+      const response = await spotifyApi.get('/me')
+      return response.data
+    } catch (error) {
+      console.error('Error fetching current user:', error)
+      throw error
+    }
   }
 }
