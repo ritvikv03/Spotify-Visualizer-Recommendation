@@ -354,6 +354,7 @@ import RecommendationEngine from '../services/recommendationEngine'
 import mlRecommendationEngine from '../services/mlRecommendationEngine'
 import feedbackLearningEngine from '../services/feedbackLearningEngine'
 import recommendationOrchestrator from '../services/recommendationOrchestrator'
+import { isTrackPlayable, canPlayWithSDK } from '../utils/trackPlayability'
 import MusicVisualizer from '../components/Visualizer/MusicVisualizer.vue'
 import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
 import SerendipitySlider from '../components/Discovery/SerendipitySlider.vue'
@@ -742,6 +743,24 @@ const stopAnalysis = () => {
 
 const playTrack = async (track) => {
   try {
+    // Validate track is playable before attempting to play
+    if (!isTrackPlayable(track)) {
+      console.error('❌ Track is not playable:', track.name)
+      alert(`Sorry, "${track.name}" is not available for playback. This might be due to regional restrictions or the track being unavailable.`)
+      return
+    }
+
+    if (!canPlayWithSDK(track)) {
+      console.warn('⚠️ Track may not be playable with Web Playback SDK:', track.name)
+    }
+
+    // Ensure track has valid URI
+    if (!track.uri || !track.uri.startsWith('spotify:track:')) {
+      console.error('❌ Invalid track URI:', track.uri)
+      alert(`Sorry, "${track.name}" cannot be played - invalid track format.`)
+      return
+    }
+
     if (deviceId) {
       await spotifyService.play([track.uri], deviceId)
     } else {
@@ -750,8 +769,18 @@ const playTrack = async (track) => {
     }
     currentTrack.value = track
     isPlaying.value = true
+    console.log('✅ Now playing:', track.name)
   } catch (error) {
     console.error('Error playing track:', error)
+
+    // Provide user-friendly error message
+    if (error.status === 403) {
+      alert('Playback requires Spotify Premium. Please upgrade your account to play full tracks.')
+    } else if (error.status === 404) {
+      alert(`Track "${track.name}" not found or unavailable.`)
+    } else {
+      alert(`Unable to play "${track.name}". Error: ${error.message || 'Unknown error'}`)
+    }
   }
 }
 

@@ -10,6 +10,7 @@
  */
 
 import { openDB } from 'idb';
+import { filterPlayableTracks, cleanTrackList, logPlayabilityStats, isTrackPlayable } from '../utils/trackPlayability.js';
 
 const DB_NAME = 'YTMusicInspiredDB';
 const DB_VERSION = 1;
@@ -176,6 +177,10 @@ export class YouTubeMusicInspiredEngine {
   async getContextualRecommendations(userTracks, allAvailableTracks, context = null) {
     const currentContext = context || this.getCurrentContext();
 
+    // Filter out unplayable tracks first
+    const playableTracks = filterPlayableTracks(allAvailableTracks);
+    logPlayabilityStats(allAvailableTracks, playableTracks, 'contextual recommendations input');
+
     // Get historical sessions with similar context
     const similarSessions = await this.getSimilarContextSessions(currentContext);
 
@@ -183,7 +188,7 @@ export class YouTubeMusicInspiredEngine {
     const contextualPatterns = this.extractContextualPatterns(similarSessions);
 
     // Score tracks based on contextual fit
-    const scoredTracks = allAvailableTracks.map(track => {
+    const scoredTracks = playableTracks.map(track => {
       let score = 0;
 
       // Audio feature matching for suggested mood
@@ -402,6 +407,16 @@ export class YouTubeMusicInspiredEngine {
    * Generate smart play queue based on current track and session
    */
   async generateSmartQueue(currentTrack, availableTracks, queueLength = 10) {
+    // Ensure current track is playable
+    if (!isTrackPlayable(currentTrack)) {
+      console.warn('⚠️ Current track is not playable, cannot generate queue');
+      return [];
+    }
+
+    // Filter playable tracks
+    const playableTracks = filterPlayableTracks(availableTracks);
+    logPlayabilityStats(availableTracks, playableTracks, 'smart queue generation');
+
     const context = this.getCurrentContext();
     const queue = [];
 
@@ -410,7 +425,7 @@ export class YouTubeMusicInspiredEngine {
 
     // 40% similar to current track (smooth transitions)
     const similarCount = Math.floor(queueLength * 0.4);
-    const similarTracks = this.findSimilarTracks(currentTrack, availableTracks, similarCount * 2);
+    const similarTracks = this.findSimilarTracks(currentTrack, playableTracks, similarCount * 2);
     for (let i = 0; i < similarCount && i < similarTracks.length; i++) {
       if (!usedTracks.has(similarTracks[i].id)) {
         queue.push({ ...similarTracks[i], reason: 'similar' });
@@ -422,7 +437,7 @@ export class YouTubeMusicInspiredEngine {
     const contextualCount = Math.floor(queueLength * 0.3);
     const contextualTracks = await this.getContextualRecommendations(
       [currentTrack],
-      availableTracks.filter(t => !usedTracks.has(t.id)),
+      playableTracks.filter(t => !usedTracks.has(t.id)),
       context
     );
     for (let i = 0; i < contextualCount && i < contextualTracks.length; i++) {
@@ -434,7 +449,7 @@ export class YouTubeMusicInspiredEngine {
 
     // 30% discovery (new but related)
     const discoveryCount = queueLength - queue.length;
-    const discoveryTracks = availableTracks
+    const discoveryTracks = playableTracks
       .filter(t => !usedTracks.has(t.id))
       .filter(t => t.popularity < 60) // Favor less popular
       .sort(() => Math.random() - 0.5) // Shuffle
@@ -596,38 +611,42 @@ export class YouTubeMusicInspiredEngine {
    * Generate personalized mixes (like YouTube Music's mixes)
    */
   async generatePersonalizedMix(type, seedData, availableTracks, mixSize = 50) {
+    // Filter playable tracks first
+    const playableTracks = filterPlayableTracks(availableTracks);
+    logPlayabilityStats(availableTracks, playableTracks, 'personalized mix generation');
+
     let mix = [];
     const context = this.getCurrentContext();
 
     switch (type) {
       case 'discovery':
         // Discovery Mix: New music based on taste
-        mix = await this.generateDiscoveryMix(seedData, availableTracks, mixSize);
+        mix = await this.generateDiscoveryMix(seedData, playableTracks, mixSize);
         break;
 
       case 'mood':
         // Mood Mix: Based on current context and mood
-        mix = await this.generateMoodMix(context.suggestedMood, availableTracks, mixSize);
+        mix = await this.generateMoodMix(context.suggestedMood, playableTracks, mixSize);
         break;
 
       case 'genre':
         // Genre Mix: Deep dive into a specific genre
-        mix = await this.generateGenreMix(seedData.genre, availableTracks, mixSize);
+        mix = await this.generateGenreMix(seedData.genre, playableTracks, mixSize);
         break;
 
       case 'artist':
         // Artist Mix: Artist radio with similar artists
-        mix = await this.generateArtistMix(seedData.artist, availableTracks, mixSize);
+        mix = await this.generateArtistMix(seedData.artist, playableTracks, mixSize);
         break;
 
       case 'decade':
         // Decade Mix: Music from a specific era
-        mix = await this.generateDecadeMix(seedData.decade, availableTracks, mixSize);
+        mix = await this.generateDecadeMix(seedData.decade, playableTracks, mixSize);
         break;
 
       default:
         // Default: Personalized based on recent activity
-        mix = await this.generatePersonalizedDefault(availableTracks, mixSize);
+        mix = await this.generatePersonalizedDefault(playableTracks, mixSize);
     }
 
     // Save mix to database

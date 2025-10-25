@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs'
 import Sentiment from 'sentiment'
+import { filterPlayableTracks, cleanTrackList, logPlayabilityStats } from '../utils/trackPlayability.js'
 
 /**
  * Advanced ML-based Recommendation Engine
@@ -313,19 +314,28 @@ export class MLRecommendationEngine {
     console.log(`📊 Serendipity level: ${serendipityLevel}`)
     console.log(`🎭 Max popularity: ${maxPopularity}`)
 
+    // Clean and combine all available tracks - filter out unplayable tracks
+    const cleanedUserTracks = filterPlayableTracks(userTracks)
+    const cleanedSavedTracks = cleanTrackList(savedTracks)
+    const cleanedRecentTracks = cleanTrackList(recentTracks)
+
+    logPlayabilityStats(userTracks, cleanedUserTracks, 'user top tracks')
+    logPlayabilityStats(savedTracks, cleanedSavedTracks, 'saved tracks')
+    logPlayabilityStats(recentTracks, cleanedRecentTracks, 'recent tracks')
+
     // Combine all available tracks
     const allTracks = [
-      ...userTracks,
-      ...savedTracks.map(item => item.track || item),
-      ...recentTracks.map(item => item.track || item)
-    ].filter(t => t && t.id && !t.is_local)
+      ...cleanedUserTracks,
+      ...cleanedSavedTracks,
+      ...cleanedRecentTracks
+    ].filter(t => t && t.id)
 
     // Deduplicate
     const uniqueTracks = Array.from(
       new Map(allTracks.map(t => [t.id, t])).values()
     )
 
-    console.log(`📚 Analyzing ${uniqueTracks.length} tracks from user library`)
+    console.log(`📚 Analyzing ${uniqueTracks.length} playable tracks from user library`)
 
     // Extract audio features for all tracks
     const trackFeatures = uniqueTracks.map(track => ({

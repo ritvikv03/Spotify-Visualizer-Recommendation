@@ -13,6 +13,7 @@ import { RecommendationEngine } from './recommendationEngine.js';
 import mlRecommendationEngine from './mlRecommendationEngine.js';
 import youtubeMusicEngine from './youtubeMusicInspiredEngine.js';
 import feedbackLearningEngine from './feedbackLearningEngine.js';
+import { filterPlayableTracks, cleanTrackList, logPlayabilityStats, validateRecommendations } from '../utils/trackPlayability.js';
 
 export class RecommendationOrchestrator {
   constructor() {
@@ -145,10 +146,14 @@ export class RecommendationOrchestrator {
       .sort((a, b) => (b.compositeScore || b.discoveryScore || 0) - (a.compositeScore || a.discoveryScore || 0))
       .slice(0, limit);
 
-    console.log(`✅ Blended ${uniqueRecommendations.length} recommendations from ${allRecommendations.length} total`);
+    // Final playability validation
+    const playableRecommendations = filterPlayableTracks(uniqueRecommendations);
+    logPlayabilityStats(uniqueRecommendations, playableRecommendations, 'blended recommendations final');
+
+    console.log(`✅ Blended ${playableRecommendations.length} playable recommendations from ${allRecommendations.length} total`);
 
     return {
-      tracks: uniqueRecommendations,
+      tracks: playableRecommendations,
       strategy: 'blended',
       strategyBreakdown: {
         spotify: spotify.status === 'fulfilled' ? spotify.value.length : 0,
@@ -422,12 +427,25 @@ export class RecommendationOrchestrator {
         spotifyService.getRecentlyPlayed(50)
       ]);
 
+      const rawTopTracks = topTracks.status === 'fulfilled' ? (topTracks.value.items || []) : [];
+      const rawSavedTracks = savedTracks.status === 'fulfilled' ? (savedTracks.value.items || []) : [];
+      const rawRecentTracks = recentTracks.status === 'fulfilled' ? (recentTracks.value.items || []) : [];
+
+      // Filter playable tracks
+      const playableTopTracks = filterPlayableTracks(rawTopTracks);
+      const playableSavedTracks = cleanTrackList(rawSavedTracks);
+      const playableRecentTracks = cleanTrackList(rawRecentTracks);
+
+      logPlayabilityStats(rawTopTracks, playableTopTracks, 'user top tracks');
+      logPlayabilityStats(rawSavedTracks, playableSavedTracks, 'user saved tracks');
+      logPlayabilityStats(rawRecentTracks, playableRecentTracks, 'user recent tracks');
+
       return {
         spotifyService,
-        tracks: topTracks.status === 'fulfilled' ? (topTracks.value.items || []) : [],
+        tracks: playableTopTracks,
         artists: topArtists.status === 'fulfilled' ? (topArtists.value.items || []) : [],
-        savedTracks: savedTracks.status === 'fulfilled' ? (savedTracks.value.items || []) : [],
-        recentTracks: recentTracks.status === 'fulfilled' ? (recentTracks.value.items || []) : []
+        savedTracks: playableSavedTracks.map(track => ({ track })), // Re-wrap for consistency
+        recentTracks: playableRecentTracks.map(track => ({ track })) // Re-wrap for consistency
       };
     } catch (error) {
       console.error('Error fetching user data:', error);
