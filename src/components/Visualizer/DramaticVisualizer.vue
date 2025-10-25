@@ -94,10 +94,36 @@ let currentBeat = null
 let currentBar = null
 let currentSection = null
 
-// Theme colors
+// Theme colors - will be gradients
 let primaryColor = new THREE.Color(0x8B5CF6)
 let secondaryColor = new THREE.Color(0x06B6D4)
 let accentColor = new THREE.Color(0xEF4444)
+let gradientColors = []
+
+// Generate gradient palette from a base color
+const generateGradientPalette = (baseColor, steps = 5) => {
+  const palette = []
+  const color = new THREE.Color(baseColor)
+
+  // Get HSL values
+  const hsl = { h: 0, s: 0, l: 0 }
+  color.getHSL(hsl)
+
+  // Generate gradient from dark to light
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1)
+    // Vary lightness from 0.2 (dark) to 0.8 (light)
+    const lightness = 0.2 + t * 0.6
+    // Slightly vary saturation for richness
+    const saturation = hsl.s * (0.85 + t * 0.15)
+
+    const gradColor = new THREE.Color()
+    gradColor.setHSL(hsl.h, saturation, lightness)
+    palette.push(gradColor)
+  }
+
+  return palette
+}
 
 // Kaleidoscope shader
 const kaleidoscopeVertexShader = `
@@ -821,10 +847,47 @@ const updateShader = (mode) => {
 const updateThemeColors = (theme) => {
   if (!theme) return
 
-  primaryColor = new THREE.Color(theme.primary || '#8B5CF6')
-  secondaryColor = new THREE.Color(theme.accent || '#06B6D4')
-  accentColor = new THREE.Color(theme.textSecondary || '#EF4444')
+  // Generate full gradient palettes from theme colors
+  const baseColor = theme.primary || '#8B5CF6'
+  gradientColors = generateGradientPalette(baseColor, 7)
 
+  // Set initial colors from gradient
+  primaryColor = gradientColors[0].clone()
+  secondaryColor = gradientColors[3].clone()
+  accentColor = gradientColors[5].clone()
+
+  if (shaderMaterial) {
+    shaderMaterial.uniforms.uColor1.value = primaryColor
+    shaderMaterial.uniforms.uColor2.value = secondaryColor
+    shaderMaterial.uniforms.uColor3.value = accentColor
+  }
+}
+
+// Cycle through gradient colors dynamically
+const updateGradientCycle = (time) => {
+  if (gradientColors.length === 0) return
+
+  // Cycle through gradient based on time and music
+  const cycleSpeed = 0.15
+  const t = (time * cycleSpeed) % 1.0
+
+  // Use section progress to influence color selection
+  const sectionInfluence = currentSection ? currentSection.progress * 0.3 : 0
+  const combinedT = (t + sectionInfluence) % 1.0
+
+  // Get indices for color interpolation
+  const index1 = Math.floor(combinedT * (gradientColors.length - 1))
+  const index2 = (index1 + 1) % gradientColors.length
+  const index3 = (index1 + 3) % gradientColors.length
+
+  const localT = (combinedT * (gradientColors.length - 1)) % 1.0
+
+  // Smoothly interpolate between gradient colors
+  primaryColor.copy(gradientColors[index1]).lerp(gradientColors[index2], localT)
+  secondaryColor.copy(gradientColors[index2]).lerp(gradientColors[index3], localT)
+  accentColor.copy(gradientColors[index3]).lerp(gradientColors[index1], localT)
+
+  // Apply to shader
   if (shaderMaterial) {
     shaderMaterial.uniforms.uColor1.value = primaryColor
     shaderMaterial.uniforms.uColor2.value = secondaryColor
@@ -912,6 +975,9 @@ const animate = () => {
       shaderMaterial.uniforms.uBarProgress.value = (t % 2.0) / 2.0
       shaderMaterial.uniforms.uSectionProgress.value = (t % 8.0) / 8.0
     }
+
+    // Update gradient color cycling for dynamic theme experience
+    updateGradientCycle(time)
   }
 
   renderer.render(scene, camera)
