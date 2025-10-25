@@ -382,8 +382,8 @@ const startAnalysis = async () => {
       { maxPopularity: 50 }
     )
 
-    // Sort recommendations by popularity in ascending order (least popular first)
-    const sortedTracks = result.tracks.sort((a, b) => a.popularity - b.popularity)
+    // Sort recommendations by popularity in descending order (most popular first)
+    const sortedTracks = result.tracks.sort((a, b) => b.popularity - a.popularity)
 
     // Check which tracks are already liked
     try {

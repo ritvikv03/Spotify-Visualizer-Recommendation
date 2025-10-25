@@ -86,6 +86,14 @@ let audioContext, analyser, dataArray, bufferLength
 let animationSpeed = 1.0
 let audioTexture = null
 
+// Audio analysis data (from Spotify API)
+let audioAnalysis = null
+let playbackInterval = null
+let currentProgress = 0
+let currentBeat = null
+let currentBar = null
+let currentSection = null
+
 // Theme colors
 let primaryColor = new THREE.Color(0x8B5CF6)
 let secondaryColor = new THREE.Color(0x06B6D4)
@@ -111,6 +119,9 @@ const kaleidoscopeFragmentShader = `
   uniform float uBass;
   uniform float uMid;
   uniform float uTreble;
+  uniform float uBeatIntensity;
+  uniform float uBarProgress;
+  uniform float uSectionProgress;
 
   varying vec2 vUv;
 
@@ -129,17 +140,21 @@ const kaleidoscopeFragmentShader = `
     angle = mod(angle, segment);
     angle = abs(angle - segment * 0.5);
 
-    // Audio reactivity
+    // Audio reactivity with beat sync
     float audioSample = texture2D(uAudioData, vec2(radius, 0.5)).r;
 
-    // Create patterns
-    float pattern1 = sin(angle * 8.0 + time + radius * 20.0) * 0.5 + 0.5;
-    float pattern2 = cos(radius * 30.0 - time * 2.0) * 0.5 + 0.5;
-    float pattern3 = sin(angle * 16.0 - radius * 15.0 + time) * 0.5 + 0.5;
+    // Beat-synced pulsing - scales patterns on beat hits
+    float beatPulse = 1.0 + uBeatIntensity * 0.5;
 
-    // Combine with audio
+    // Create patterns that pulse with beats
+    float pattern1 = sin(angle * 8.0 * beatPulse + time + radius * 20.0) * 0.5 + 0.5;
+    float pattern2 = cos(radius * 30.0 * beatPulse - time * 2.0) * 0.5 + 0.5;
+    float pattern3 = sin(angle * 16.0 - radius * 15.0 + time + uBarProgress * 2.0) * 0.5 + 0.5;
+
+    // Combine with audio and beat intensity
     float value = pattern1 * pattern2 * pattern3;
     value *= (1.0 + audioSample * uVolume * 2.0);
+    value *= beatPulse;
 
     return value;
   }
@@ -151,14 +166,14 @@ const kaleidoscopeFragmentShader = `
 
     float pat = pattern(uv * 0.5 + 0.5, uTime * 0.3);
 
-    // Color mixing based on position and audio
+    // Beat-synchronized color mixing
     vec3 color1 = mix(uColor1, uColor2, pat);
-    vec3 color2 = mix(uColor2, uColor3, sin(uTime * 0.5) * 0.5 + 0.5);
-    vec3 finalColor = mix(color1, color2, uBass * 0.5);
+    vec3 color2 = mix(uColor2, uColor3, sin(uTime * 0.5 + uSectionProgress * 3.14159) * 0.5 + 0.5);
+    vec3 finalColor = mix(color1, color2, uBass * 0.5 + uBeatIntensity * 0.3);
 
-    // Add glow
-    float glow = pat * (1.0 + uVolume);
-    finalColor += glow * 0.3;
+    // Add beat-reactive glow
+    float glow = pat * (1.0 + uVolume + uBeatIntensity * 0.5);
+    finalColor += glow * (0.3 + uBeatIntensity * 0.2);
 
     gl_FragColor = vec4(finalColor, 1.0);
   }
@@ -172,6 +187,8 @@ const tunnelFragmentShader = `
   uniform vec3 uColor2;
   uniform vec3 uColor3;
   uniform float uVolume;
+  uniform float uBeatIntensity;
+  uniform float uBarProgress;
 
   varying vec2 vUv;
 
@@ -184,23 +201,23 @@ const tunnelFragmentShader = `
     float angle = atan(uv.y, uv.x);
     float radius = length(uv);
 
-    // Tunnel effect
+    // Tunnel effect with beat sync
     float tunnel = 1.0 / radius;
-    tunnel -= uTime * 0.5;
+    tunnel -= uTime * 0.5 * (1.0 + uBeatIntensity * 0.2);
 
     // Audio reactivity
     float audioSample = texture2D(uAudioData, vec2(fract(tunnel), 0.5)).r;
 
-    // Rings
-    float rings = sin(tunnel * 10.0 + angle * 8.0) * 0.5 + 0.5;
-    rings *= (1.0 + audioSample * uVolume);
+    // Beat-reactive rings
+    float rings = sin(tunnel * (10.0 + uBeatIntensity * 2.0) + angle * 8.0) * 0.5 + 0.5;
+    rings *= (1.0 + audioSample * uVolume + uBeatIntensity * 0.5);
 
-    // Color
+    // Beat-synchronized color transitions
     vec3 color = mix(uColor1, uColor2, rings);
-    color = mix(color, uColor3, sin(uTime + tunnel) * 0.5 + 0.5);
+    color = mix(color, uColor3, sin(uTime + tunnel + uBarProgress * 6.28) * 0.5 + 0.5);
 
-    // Vignette
-    float vignette = 1.0 - radius * 0.5;
+    // Vignette with beat pulse
+    float vignette = 1.0 - radius * (0.5 - uBeatIntensity * 0.1);
     color *= vignette;
 
     gl_FragColor = vec4(color, 1.0);
@@ -216,6 +233,8 @@ const waveFragmentShader = `
   uniform vec3 uColor3;
   uniform float uVolume;
   uniform float uBass;
+  uniform float uBeatIntensity;
+  uniform float uBarProgress;
 
   varying vec2 vUv;
 
@@ -224,26 +243,29 @@ const waveFragmentShader = `
   void main() {
     vec2 uv = vUv;
 
-    // Create waves
-    float wave1 = sin(uv.x * 10.0 + uTime * 0.5) * 0.1;
-    float wave2 = sin(uv.x * 15.0 - uTime * 0.7) * 0.08;
-    float wave3 = sin(uv.x * 20.0 + uTime * 0.3) * 0.06;
+    // Beat-synchronized wave speed and amplitude
+    float beatAmplitude = 1.0 + uBeatIntensity * 0.4;
+
+    // Create waves that pulse with the beat
+    float wave1 = sin(uv.x * 10.0 + uTime * 0.5) * 0.1 * beatAmplitude;
+    float wave2 = sin(uv.x * 15.0 - uTime * 0.7 + uBarProgress * 2.0) * 0.08 * beatAmplitude;
+    float wave3 = sin(uv.x * 20.0 + uTime * 0.3) * 0.06 * beatAmplitude;
 
     // Audio reactivity
     float audioSample = texture2D(uAudioData, vec2(uv.x, 0.5)).r;
 
     // Combine waves
     float y = uv.y + wave1 + wave2 + wave3;
-    y += audioSample * uBass * 0.3;
+    y += audioSample * uBass * (0.3 + uBeatIntensity * 0.2);
 
-    // Create bands
-    float bands = abs(fract(y * 8.0) - 0.5) * 2.0;
+    // Create bands that react to beats
+    float bands = abs(fract(y * (8.0 + uBeatIntensity * 2.0)) - 0.5) * 2.0;
     bands = smoothstep(0.0, 0.1, bands);
 
-    // Color
+    // Beat-reactive color
     vec3 color = mix(uColor1, uColor2, uv.x);
-    color = mix(color, uColor3, sin(uTime * 0.5 + uv.y * PI) * 0.5 + 0.5);
-    color *= (1.0 - bands) * (1.0 + uVolume * 0.5);
+    color = mix(color, uColor3, sin(uTime * 0.5 + uv.y * PI + uBarProgress * 3.14) * 0.5 + 0.5);
+    color *= (1.0 - bands) * (1.0 + uVolume * 0.5 + uBeatIntensity * 0.3);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -258,6 +280,8 @@ const flowerFragmentShader = `
   uniform vec3 uColor3;
   uniform float uVolume;
   uniform float uMid;
+  uniform float uBeatIntensity;
+  uniform float uBarProgress;
 
   varying vec2 vUv;
 
@@ -268,31 +292,34 @@ const flowerFragmentShader = `
     vec2 uv = vUv * 2.0 - 1.0;
     uv.x *= uResolution.x / uResolution.y;
 
+    // Beat-synchronized rotation
+    float rotation = uTime * 0.2 + uBarProgress * 0.5;
+    float c = cos(rotation);
+    float s = sin(rotation);
+    uv = mat2(c, -s, s, c) * uv;
+
     float angle = atan(uv.y, uv.x);
     float radius = length(uv);
 
-    // Petal shape
-    float petal = abs(sin(angle * PETALS * 0.5)) * 0.5 + 0.5;
-    petal = pow(petal, 2.0);
+    // Petal shape that pulses with beats
+    float petal = abs(sin(angle * PETALS * 0.5 + uBeatIntensity * 0.5)) * 0.5 + 0.5;
+    petal = pow(petal, 2.0 - uBeatIntensity * 0.5);
 
     // Audio reactivity
     float audioSample = texture2D(uAudioData, vec2(radius, 0.5)).r;
 
-    // Layers
-    float layers = sin(radius * 15.0 - uTime) * 0.5 + 0.5;
+    // Beat-reactive layers
+    float layers = sin(radius * (15.0 + uBeatIntensity * 3.0) - uTime) * 0.5 + 0.5;
     layers *= petal;
-    layers *= (1.0 + audioSample * uMid * 2.0);
+    layers *= (1.0 + audioSample * uMid * 2.0 + uBeatIntensity * 0.5);
 
-    // Rotate
-    float rotation = uTime * 0.2;
-
-    // Color
+    // Beat-synchronized color
     vec3 color = mix(uColor1, uColor2, layers);
-    color = mix(color, uColor3, radius);
-    color *= (1.0 + uVolume * 0.3);
+    color = mix(color, uColor3, radius + uBeatIntensity * 0.3);
+    color *= (1.0 + uVolume * 0.3 + uBeatIntensity * 0.4);
 
-    // Fade edges
-    float fade = 1.0 - smoothstep(0.5, 1.0, radius);
+    // Fade edges with beat pulse
+    float fade = 1.0 - smoothstep(0.5 - uBeatIntensity * 0.1, 1.0, radius);
     color *= fade;
 
     gl_FragColor = vec4(color, 1.0);
@@ -307,6 +334,8 @@ const barsFragmentShader = `
   uniform vec3 uColor2;
   uniform vec3 uColor3;
   uniform float uVolume;
+  uniform float uBeatIntensity;
+  uniform float uBarProgress;
 
   varying vec2 vUv;
 
@@ -317,6 +346,12 @@ const barsFragmentShader = `
     vec2 uv = vUv * 2.0 - 1.0;
     uv.x *= uResolution.x / uResolution.y;
 
+    // Beat-synchronized rotation
+    float rotation = uTime * 0.1 + uBarProgress * 0.3;
+    float c = cos(rotation);
+    float s = sin(rotation);
+    uv = mat2(c, -s, s, c) * uv;
+
     float angle = atan(uv.y, uv.x) + PI;
     float radius = length(uv);
 
@@ -326,19 +361,22 @@ const barsFragmentShader = `
 
     // Audio data for this bar
     float audioSample = texture2D(uAudioData, vec2(barPos, 0.5)).r;
-    float barHeight = audioSample * uVolume * 0.8 + 0.2;
+
+    // Beat-reactive bar height
+    float barHeight = audioSample * uVolume * (0.8 + uBeatIntensity * 0.3) + 0.2;
+    barHeight *= (1.0 + uBeatIntensity * 0.4);
 
     // Create bar
     float bar = step(radius, barHeight * 0.5);
     bar *= 1.0 - step(radius, 0.1);
 
-    // Color based on position
-    vec3 color = mix(uColor1, uColor2, barPos);
-    color = mix(color, uColor3, audioSample);
+    // Beat-synchronized color
+    vec3 color = mix(uColor1, uColor2, barPos + uBeatIntensity * 0.2);
+    color = mix(color, uColor3, audioSample + uBeatIntensity * 0.3);
     color *= bar;
 
-    // Add glow
-    float glow = exp(-radius * 2.0) * audioSample;
+    // Beat-enhanced glow
+    float glow = exp(-radius * 2.0) * audioSample * (1.0 + uBeatIntensity);
     color += glow * uColor2 * 0.5;
 
     gl_FragColor = vec4(color, 1.0);
@@ -367,6 +405,7 @@ onUnmounted(() => {
   }
   if (audioContext) audioContext.close()
   if (audioTexture) audioTexture.dispose()
+  stopPlaybackSync()
 })
 
 watch(() => props.isPlaying, (playing) => {
@@ -392,6 +431,94 @@ watch(() => props.theme, (theme) => {
     updateThemeColors(theme)
   }
 }, { deep: true, immediate: true })
+
+watch(() => props.currentTrack, async (track) => {
+  if (track && track.id) {
+    try {
+      // Fetch audio analysis from Spotify
+      audioAnalysis = await spotifyService.getAudioAnalysis(track.id)
+      console.log('Audio analysis loaded:', audioAnalysis)
+
+      // Start playback position polling
+      startPlaybackSync()
+    } catch (error) {
+      console.error('Error loading audio analysis:', error)
+      audioAnalysis = null
+    }
+  } else {
+    audioAnalysis = null
+    stopPlaybackSync()
+  }
+})
+
+// Sync playback position with Spotify
+const startPlaybackSync = () => {
+  stopPlaybackSync()
+
+  // Poll playback position every 100ms for tight sync
+  playbackInterval = setInterval(async () => {
+    try {
+      const playback = await spotifyService.getCurrentPlayback()
+      if (playback && playback.item && playback.progress_ms !== undefined) {
+        currentProgress = playback.progress_ms / 1000 // Convert to seconds
+        updateAudioAnalysisData()
+      }
+    } catch (error) {
+      // Silently fail - might be paused or no active device
+    }
+  }, 100)
+}
+
+const stopPlaybackSync = () => {
+  if (playbackInterval) {
+    clearInterval(playbackInterval)
+    playbackInterval = null
+  }
+}
+
+// Update current beat, bar, and section based on playback position
+const updateAudioAnalysisData = () => {
+  if (!audioAnalysis || !audioAnalysis.beats || !audioAnalysis.bars) return
+
+  // Find current beat
+  currentBeat = findCurrentInterval(audioAnalysis.beats, currentProgress)
+
+  // Find current bar
+  currentBar = findCurrentInterval(audioAnalysis.bars, currentProgress)
+
+  // Find current section
+  if (audioAnalysis.sections) {
+    currentSection = findCurrentInterval(audioAnalysis.sections, currentProgress)
+  }
+}
+
+// Find the current interval (beat, bar, or section) based on time
+const findCurrentInterval = (intervals, time) => {
+  if (!intervals || intervals.length === 0) return null
+
+  for (let i = 0; i < intervals.length; i++) {
+    const interval = intervals[i]
+    const start = interval.start
+    const end = start + interval.duration
+
+    if (time >= start && time < end) {
+      // Calculate progress through this interval (0 to 1)
+      const progress = (time - start) / interval.duration
+      return { ...interval, progress }
+    }
+  }
+
+  return intervals[intervals.length - 1]
+}
+
+// Calculate beat intensity (higher at beat start, decays over time)
+const getBeatIntensity = () => {
+  if (!currentBeat) return 0
+
+  // Exponential decay from 1.0 at beat start to 0 at beat end
+  const progress = currentBeat.progress || 0
+  return Math.exp(-progress * 4) // Fast decay
+}
 
 const initThreeJS = () => {
   scene = new THREE.Scene()
@@ -445,7 +572,10 @@ const updateShader = (mode) => {
       uVolume: { value: 0 },
       uBass: { value: 0 },
       uMid: { value: 0 },
-      uTreble: { value: 0 }
+      uTreble: { value: 0 },
+      uBeatIntensity: { value: 0 },
+      uBarProgress: { value: 0 },
+      uSectionProgress: { value: 0 }
     }
   })
 
@@ -531,6 +661,23 @@ const animate = () => {
       shaderMaterial.uniforms.uBass.value = Math.abs(Math.sin(t * 1.3)) * 0.5 + 0.3
       shaderMaterial.uniforms.uMid.value = Math.abs(Math.sin(t * 1.7)) * 0.5 + 0.3
       shaderMaterial.uniforms.uTreble.value = Math.abs(Math.sin(t * 2.1)) * 0.5 + 0.3
+    }
+
+    // Update beat/bar/section sync uniforms
+    if (props.isPlaying && audioAnalysis) {
+      const beatIntensity = getBeatIntensity()
+      const barProgress = currentBar ? currentBar.progress : 0
+      const sectionProgress = currentSection ? currentSection.progress : 0
+
+      shaderMaterial.uniforms.uBeatIntensity.value = beatIntensity
+      shaderMaterial.uniforms.uBarProgress.value = barProgress
+      shaderMaterial.uniforms.uSectionProgress.value = sectionProgress
+    } else {
+      // Fallback to procedural beat simulation
+      const t = time * 0.5
+      shaderMaterial.uniforms.uBeatIntensity.value = Math.abs(Math.sin(t * 2)) * 0.5
+      shaderMaterial.uniforms.uBarProgress.value = (t % 2.0) / 2.0
+      shaderMaterial.uniforms.uSectionProgress.value = (t % 8.0) / 8.0
     }
   }
 
