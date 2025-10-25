@@ -119,17 +119,25 @@
       :class="showSidebar ? 'translate-x-0' : 'translate-x-full'"
     >
       <div class="h-full glass-sidebar p-4 sm:p-6 overflow-y-auto">
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-2">
-            <IconGem :size="24" :color="themeStore.themes[themeStore.currentTheme].primary" />
-            <h3 class="text-xl font-bold text-white">Hidden Gems</h3>
-            <span class="text-sm text-gray-400">({{ recommendations.length }})</span>
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <IconGem :size="24" :color="themeStore.themes[themeStore.currentTheme].primary" />
+              <h3 class="text-xl font-bold text-white">Hidden Gems</h3>
+            </div>
+            <button @click="showSidebar = false" class="text-white hover:text-gray-300 touch-manipulation">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
           </div>
-          <button @click="showSidebar = false" class="text-white hover:text-gray-300">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span>Showing {{ recommendations.length }} of {{ allAvailableTracks.length }}</span>
+            <span v-if="allAvailableTracks.length > recommendations.length">•</span>
+            <span v-if="allAvailableTracks.length > recommendations.length" class="text-green-400">
+              {{ allAvailableTracks.length - recommendations.length }} more available
+            </span>
+          </div>
         </div>
 
         <div v-if="recommendations.length === 0" class="text-center py-12">
@@ -138,17 +146,33 @@
         </div>
 
         <div v-else>
-          <!-- Generate Playlist Button -->
-          <button
-            @click="generatePlaylist"
-            :disabled="isGeneratingPlaylist"
-            class="w-full glass-btn-primary px-4 py-3.5 sm:py-3 mb-4 flex items-center justify-center gap-2 touch-manipulation active:scale-95 transition-transform text-sm sm:text-base"
-          >
-            <svg class="w-5 h-5" :class="{ 'animate-spin': isGeneratingPlaylist }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            <span>{{ isGeneratingPlaylist ? 'Creating Playlist...' : 'Save as Playlist' }}</span>
-          </button>
+          <!-- Action Buttons -->
+          <div class="flex gap-2 mb-4">
+            <!-- Refresh Button -->
+            <button
+              @click="refreshRecommendations"
+              class="flex-1 glass-btn px-4 py-3.5 sm:py-3 flex items-center justify-center gap-2 touch-manipulation active:scale-95 transition-transform text-sm sm:text-base"
+              :style="{ borderColor: themeStore.themes[themeStore.currentTheme].primary + '40' }"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <span class="hidden sm:inline">Refresh</span>
+            </button>
+
+            <!-- Generate Playlist Button -->
+            <button
+              @click="generatePlaylist"
+              :disabled="isGeneratingPlaylist"
+              class="flex-1 glass-btn-primary px-4 py-3.5 sm:py-3 flex items-center justify-center gap-2 touch-manipulation active:scale-95 transition-transform text-sm sm:text-base"
+            >
+              <svg class="w-5 h-5" :class="{ 'animate-spin': isGeneratingPlaylist }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              <span class="hidden sm:inline">{{ isGeneratingPlaylist ? 'Creating...' : 'Save Playlist' }}</span>
+              <span class="sm:hidden">{{ isGeneratingPlaylist ? '...' : 'Save' }}</span>
+            </button>
+          </div>
 
           <!-- Track List -->
           <div class="space-y-3">
@@ -242,6 +266,7 @@ const currentTrack = ref(null)
 const audioFeatures = ref(null)
 const recommendations = ref([])
 const replacementTracks = ref([])
+const allAvailableTracks = ref([]) // All 150 tracks for refresh pool
 const currentMode = ref('kaleidosync')
 const showModeMenu = ref(false)
 const showThemeMenu = ref(false)
@@ -418,6 +443,9 @@ const startAnalysis = async () => {
       })
     }
 
+    // Store all tracks for refresh functionality
+    allAvailableTracks.value = sortedTracks
+
     // Split into displayed recommendations (first 20) and replacement pool (rest)
     recommendations.value = sortedTracks.slice(0, 20)
     replacementTracks.value = sortedTracks.slice(20)
@@ -425,7 +453,8 @@ const startAnalysis = async () => {
     console.log('✓ Recommendations split:', {
       displayed: recommendations.value.length,
       replacementPool: replacementTracks.value.length,
-      total: recommendations.value.length + replacementTracks.value.length
+      total: allAvailableTracks.value.length,
+      availableForRefresh: allAvailableTracks.value.length - 20
     })
 
     showSidebar.value = true
@@ -540,6 +569,60 @@ const replaceTrack = async (track) => {
     }
   } catch (error) {
     console.error('Error replacing track:', error)
+  }
+}
+
+const refreshRecommendations = async () => {
+  // Check if we have enough tracks to refresh
+  if (allAvailableTracks.value.length < 40) {
+    console.warn('Not enough tracks to refresh. Run Analyze again for more recommendations.')
+    return
+  }
+
+  try {
+    // Get currently displayed track IDs to avoid showing them immediately
+    const currentTrackIds = new Set(recommendations.value.map(t => t.id))
+
+    // Filter available tracks to exclude currently displayed ones
+    const availableForRefresh = allAvailableTracks.value.filter(t => !currentTrackIds.has(t.id))
+
+    if (availableForRefresh.length < 20) {
+      console.warn('Not enough new tracks available. Refreshing with all available tracks.')
+      // If we don't have enough unique tracks, just rotate from the beginning
+      recommendations.value = allAvailableTracks.value.slice(20, 40)
+      replacementTracks.value = allAvailableTracks.value.slice(40).concat(allAvailableTracks.value.slice(0, 20))
+    } else {
+      // Get next 20 tracks from the available pool
+      const newRecommendations = availableForRefresh.slice(0, 20)
+
+      // Check liked status for new recommendations
+      try {
+        const trackIds = newRecommendations.map(t => t.id)
+        const likedStatus = await spotifyService.checkSavedTracks(trackIds)
+        newRecommendations.forEach((track, index) => {
+          track.isLiked = likedStatus[index] || false
+        })
+      } catch (error) {
+        console.error('Error checking liked status:', error)
+        newRecommendations.forEach(track => {
+          track.isLiked = false
+        })
+      }
+
+      // Update displayed recommendations
+      recommendations.value = newRecommendations
+
+      // Update replacement pool (everything except what's displayed)
+      replacementTracks.value = availableForRefresh.slice(20)
+
+      console.log('🔄 Refreshed recommendations:', {
+        displayed: recommendations.value.length,
+        replacementPool: replacementTracks.value.length,
+        total: allAvailableTracks.value.length
+      })
+    }
+  } catch (error) {
+    console.error('Error refreshing recommendations:', error)
   }
 }
 
