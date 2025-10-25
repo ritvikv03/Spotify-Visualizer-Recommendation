@@ -358,25 +358,37 @@ export default {
     }
   },
 
-  // Get audio analysis for a track (detailed time-series data)
+  // DEPRECATED: Spotify disabled this endpoint on Nov 27, 2024
+  // Returns null and uses procedural visualization fallback
+  // See SPOTIFY_API_CHANGES_2024.md for details
   async getAudioAnalysis(trackId) {
     try {
       const response = await spotifyApi.get(`/audio-analysis/${trackId}`)
       return response.data
     } catch (error) {
+      if (error.response?.status === 403) {
+        console.log('ℹ️  Audio Analysis API unavailable (deprecated Nov 2024) - using procedural visualization')
+        return null
+      }
       console.error('Error fetching audio analysis:', error)
-      throw error
+      return null
     }
   },
 
-  // Get audio features for a single track (tempo, energy, etc.)
+  // DEPRECATED: Spotify disabled this endpoint on Nov 27, 2024
+  // Returns null - use procedural beat detection instead
+  // See SPOTIFY_API_CHANGES_2024.md for details
   async getTrackAudioFeatures(trackId) {
     try {
       const response = await spotifyApi.get(`/audio-features/${trackId}`)
       return response.data
     } catch (error) {
+      if (error.response?.status === 403) {
+        console.log('ℹ️  Audio Features API unavailable (deprecated Nov 2024) - using algorithmic beat detection')
+        return null
+      }
       console.error('Error fetching track audio features:', error)
-      throw error
+      return null
     }
   },
 
