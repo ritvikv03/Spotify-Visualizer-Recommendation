@@ -395,6 +395,12 @@ const startAnalysis = async () => {
       { maxPopularity: 100 }
     )
 
+    console.log('✓ Generated recommendations:', {
+      total: result.tracks.length,
+      maxPopularity: 100,
+      avgPopularity: Math.round(result.tracks.reduce((sum, t) => sum + t.popularity, 0) / result.tracks.length)
+    })
+
     // Sort recommendations by popularity in descending order (most popular first)
     const sortedTracks = result.tracks.sort((a, b) => b.popularity - a.popularity)
 
@@ -415,6 +421,13 @@ const startAnalysis = async () => {
     // Split into displayed recommendations (first 20) and replacement pool (rest)
     recommendations.value = sortedTracks.slice(0, 20)
     replacementTracks.value = sortedTracks.slice(20)
+
+    console.log('✓ Recommendations split:', {
+      displayed: recommendations.value.length,
+      replacementPool: replacementTracks.value.length,
+      total: recommendations.value.length + replacementTracks.value.length
+    })
+
     showSidebar.value = true
   } catch (error) {
     console.error('Analysis error:', error)
@@ -500,19 +513,33 @@ const toggleLikeTrack = async (track) => {
 const replaceTrack = async (track) => {
   // Check if we have replacement tracks available
   if (replacementTracks.value.length === 0) {
-    alert('No more replacement tracks available')
+    console.warn('No more replacement tracks available')
     return
   }
 
-  // Get the next replacement track
-  const replacementTrack = replacementTracks.value.shift()
+  try {
+    // Get the next replacement track
+    const replacementTrack = replacementTracks.value.shift()
 
-  // Find the index of the track to replace
-  const index = recommendations.value.findIndex(t => t.id === track.id)
+    // Check if the replacement track is liked
+    try {
+      const likedStatus = await spotifyService.checkSavedTracks([replacementTrack.id])
+      replacementTrack.isLiked = likedStatus[0] || false
+    } catch (error) {
+      console.error('Error checking liked status for replacement:', error)
+      replacementTrack.isLiked = false
+    }
 
-  if (index !== -1) {
-    // Replace the track
-    recommendations.value.splice(index, 1, replacementTrack)
+    // Find the index of the track to replace
+    const index = recommendations.value.findIndex(t => t.id === track.id)
+
+    if (index !== -1) {
+      // Replace the track with smooth transition
+      recommendations.value.splice(index, 1, replacementTrack)
+      console.log('Replaced track:', track.name, '→', replacementTrack.name)
+    }
+  } catch (error) {
+    console.error('Error replacing track:', error)
   }
 }
 
