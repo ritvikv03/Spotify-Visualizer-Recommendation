@@ -75,10 +75,10 @@
     </header>
 
     <!-- Main Content -->
-    <div class="container mx-auto px-4 py-8">
-      <div class="grid lg:grid-cols-3 gap-6 md:gap-8">
-        <!-- Left Column - Visualizer -->
-        <div class="lg:col-span-2 space-y-4 md:space-y-6">
+    <div class="container mx-auto px-2 sm:px-4 py-4 sm:py-6 lg:py-8">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
+        <!-- Left Column - Visualizer (hidden on mobile to prioritize recommendations) -->
+        <div class="lg:col-span-2 space-y-4 md:space-y-6 hidden lg:block">
           <!-- Visualizer Card -->
           <div class="card">
             <h2 class="text-xl md:text-2xl font-bold mb-4 flex items-center gap-3">
@@ -219,8 +219,8 @@
           </div>
         </div>
 
-        <!-- Right Column - Recommendations -->
-        <div class="space-y-6">
+        <!-- Right Column - Recommendations (full width on mobile) -->
+        <div class="space-y-4 sm:space-y-6 w-full lg:w-auto">
           <!-- Serendipity Slider (ML Feature) -->
           <SerendipitySlider
             v-model="serendipityLevel"
@@ -249,79 +249,67 @@
               <p class="text-gray-400 text-sm">Click "Analyze My Taste" above to unlock personalized hidden gems based on your music profile!</p>
             </div>
 
-            <div v-else class="space-y-3 max-h-[600px] overflow-y-auto">
+            <div v-else class="space-y-3 max-h-[400px] sm:max-h-[500px] lg:max-h-[600px] overflow-y-auto overscroll-contain touch-pan-y">
               <div
                 v-for="track in recommendations"
                 :key="track.id"
-                class="bg-spotify-dark p-3 rounded-lg hover:bg-opacity-60 transition-all relative group"
+                class="bg-spotify-dark p-3 sm:p-4 rounded-lg hover:bg-opacity-60 active:bg-opacity-50 transition-all relative group touch-manipulation"
               >
                 <div class="flex items-start gap-3 mb-2">
                   <img
                     v-if="track.album?.images?.[2]?.url"
                     :src="track.album.images[2].url"
                     alt="Album art"
-                    class="w-12 h-12 rounded cursor-pointer flex-shrink-0"
+                    class="w-14 h-14 sm:w-12 sm:h-12 rounded cursor-pointer flex-shrink-0"
                     @click="playTrack(track)"
                   />
                   <div class="flex-1 min-w-0 cursor-pointer" @click="playTrack(track)">
-                    <p class="font-semibold truncate">{{ track.name }}</p>
-                    <p class="text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
-                    <!-- ML: Discovery Score Badge -->
-                    <div class="mt-1">
-                      <DiscoveryScoreBadge
-                        v-if="track.discoveryScore !== undefined"
-                        :score="track.discoveryScore"
-                        :popularity="track.popularity || 0"
-                      />
-                      <span v-else class="text-xs text-spotify-green">
-                        {{ track.popularity }}% popular
+                    <p class="font-semibold truncate text-sm sm:text-base">{{ track.name }}</p>
+                    <p class="text-xs sm:text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+                    <!-- Similarity/Popularity Badge -->
+                    <div class="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <span v-if="track.similarity !== undefined" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-spotify-green/20 text-spotify-green border border-spotify-green/30 whitespace-nowrap">
+                        {{ Math.round(track.similarity * 100) }}% Match
+                      </span>
+                      <span v-else-if="track.discoveryScore !== undefined" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 whitespace-nowrap">
+                        {{ Math.round(track.discoveryScore) }} Discovery
+                      </span>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30 whitespace-nowrap">
+                        {{ track.popularity || 0 }}% Popular
                       </span>
                     </div>
                   </div>
                   <div class="flex flex-col items-end gap-2">
-                    <!-- Original favorite button -->
+                    <!-- Favorite button (larger touch target for mobile) -->
                     <button
                       @click="toggleFavorite(track)"
-                      class="hover:scale-125 transition-transform"
+                      class="p-2 hover:scale-110 active:scale-95 transition-transform rounded-full hover:bg-white/10"
                       :title="isFavorited(track) ? 'Remove from favorites' : 'Add to favorites'"
                     >
-                      <svg :class="isFavorited(track) ? 'text-red-500 fill-current' : 'text-gray-400'" class="w-5 h-5" viewBox="0 0 24 24" :fill="isFavorited(track) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+                      <svg :class="isFavorited(track) ? 'text-red-500 fill-current' : 'text-gray-400'" class="w-6 h-6 sm:w-5 sm:h-5" viewBox="0 0 24 24" :fill="isFavorited(track) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                       </svg>
                     </button>
                   </div>
                 </div>
 
-                <!-- ML: Feedback Buttons -->
-                <FeedbackButtons
-                  v-if="useMLEngine"
-                  :track="track"
-                  :context="{
-                    reason: track.reason,
-                    similarity: track.similarity,
-                    serendipityLevel: serendipityLevel
-                  }"
-                  @feedback="handleFeedback"
-                  class="mt-2"
-                />
               </div>
             </div>
 
             <button
               v-if="analysisComplete && recommendations.length > 0"
-              @click="loadMoreRecommendations"
-              class="btn-secondary w-full mt-4 flex items-center justify-center gap-2"
+              @click="refreshRecommendations"
+              class="btn-primary w-full mt-4 flex items-center justify-center gap-2"
               :disabled="isLoadingRecommendations"
             >
-              <svg v-if="!isLoadingRecommendations" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8" stroke-width="2"/>
-                <path d="M21 21l-4.35-4.35" stroke-width="2" stroke-linecap="round"/>
+              <svg v-if="!isLoadingRecommendations" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <svg v-else class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
               </svg>
-              <span>{{ isLoadingRecommendations ? 'Searching...' : 'Discover More Gems' }}</span>
+              <span>{{ isLoadingRecommendations ? 'Finding New Gems...' : '🔄 Refresh Recommendations' }}</span>
             </button>
 
             <button
@@ -383,11 +371,9 @@ const isPlaying = ref(false)
 const showThemeMenu = ref(false)
 const serendipityLevel = ref(0.3) // ML: Exploration level (0-1)
 const userAudioPreferences = ref(null) // ML: Learned audio preferences
-const useMLEngine = ref(true) // Toggle between ML and basic engine
-const useOrchestrator = ref(true) // Use YouTube Music-inspired orchestrator
+const currentContext = ref(null) // Current listening context (time, mood, etc.)
 const recommendationStrategy = ref(null) // Track which strategy was used
 const recommendationConfidence = ref(0) // Bandit algorithm confidence
-const currentContext = ref(null) // Current listening context (time, mood, etc.)
 const discoveryFilters = ref({
   maxPopularity: 100,
   targetEnergy: 0.5,
@@ -562,106 +548,45 @@ const startAnalysis = async () => {
       console.log('Saved tracks unavailable')
     }
 
-    // Use orchestrator if enabled (YouTube Music-inspired recommendations)
-    let result
-    if (useOrchestrator.value) {
-      console.log('🎼 Using YouTube Music-Inspired Orchestrator...')
-      result = await recommendationOrchestrator.generateRecommendations(
-        spotifyService,
-        {
-          useMultiArmedBandit: true,
-          fallbackToAll: false,
-          limit: 100, // Fetch more for better variety
-          serendipityLevel: serendipityLevel.value,
-          maxPopularity: discoveryFilters.value.maxPopularity
-        }
-      )
-
-      // Extract recommendations
-      recommendations.value = result.tracks
-      recommendationStrategy.value = result.strategy
-      recommendationConfidence.value = result.confidence || 0
-      currentContext.value = result.metadata?.context || currentContext.value
-
-      // Filter out disliked tracks
-      recommendations.value = await feedbackLearningEngine.filterRecommendations(
-        recommendations.value
-      )
-
-      // Shuffle to add variety and prevent same order every time
-      recommendations.value = recommendations.value
-        .map(track => ({ track, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ track }) => track)
-
-      console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%), ${recommendations.value.length} unique tracks`)
-
-      tasteProfile.value = {
-        avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
-        topGenre: uniqueArtists[0]?.genres?.[0] || 'Mixed',
-        tracksAnalyzed: uniqueTracks.length,
-        diversityScore: uniqueArtists.length / uniqueTracks.length,
-        topGenres: uniqueArtists.slice(0, 5).flatMap(a => a.genres || []).slice(0, 5)
-      }
-    } else if (useMLEngine.value) {
-      console.log('🧠 Using ML Recommendation Engine...')
-      result = await mlRecommendationEngine.generateAdvancedRecommendations({
-        userTracks: uniqueTracks,
-        userArtists: uniqueArtists,
-        savedTracks: savedTracksData,
-        recentTracks: allTracks.slice(0, 50),
+    // Use orchestrator with multi-armed bandit (best algorithm)
+    console.log('🎼 Using AI Recommendation System (Multi-Armed Bandit)...')
+    const result = await recommendationOrchestrator.generateRecommendations(
+      spotifyService,
+      {
+        useMultiArmedBandit: true,
+        fallbackToAll: false,
+        limit: 100, // Fetch 100, then select best 50
         serendipityLevel: serendipityLevel.value,
-        maxPopularity: discoveryFilters.value.maxPopularity,
-        limit: 100 // Fetch more for better variety
-      })
-
-      // Extract recommendations
-      recommendations.value = result.recommendations
-      userAudioPreferences.value = result.metadata.avgFeatures
-
-      // Filter out disliked tracks
-      recommendations.value = await feedbackLearningEngine.filterRecommendations(
-        recommendations.value
-      )
-
-      // Shuffle to add variety and prevent same order every time
-      recommendations.value = recommendations.value
-        .map(track => ({ track, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ track }) => track)
-
-      tasteProfile.value = {
-        avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
-        topGenre: result.metadata.patterns?.recentTrends?.[0] || 'Mixed',
-        tracksAnalyzed: uniqueTracks.length,
-        diversityScore: uniqueArtists.length / uniqueTracks.length,
-        topGenres: Object.keys(result.metadata.patterns || {}).slice(0, 3)
+        maxPopularity: discoveryFilters.value.maxPopularity
       }
-    } else {
-      // Fallback to basic engine
-      console.log('📊 Using Basic Recommendation Engine...')
-      result = await RecommendationEngine.generateRecommendations(
-        spotifyService,
-        uniqueTracks,
-        uniqueArtists,
-        discoveryFilters.value
-      )
+    )
 
-      recommendations.value = result.tracks
+    // Extract recommendations
+    recommendations.value = result.tracks
+    recommendationStrategy.value = result.strategy
+    recommendationConfidence.value = result.confidence || 0
+    currentContext.value = result.metadata?.context || currentContext.value
 
-      // Shuffle to add variety and prevent same order every time
-      recommendations.value = recommendations.value
-        .map(track => ({ track, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(({ track }) => track)
+    // Filter out disliked tracks
+    recommendations.value = await feedbackLearningEngine.filterRecommendations(
+      recommendations.value
+    )
 
-      tasteProfile.value = {
-        avgPopularity: result.analysis.avgPopularity,
-        topGenre: result.analysis.recentTrends[0] || 'Mixed',
-        tracksAnalyzed: uniqueTracks.length,
-        diversityScore: result.analysis.diversityScore,
-        topGenres: result.analysis.recentTrends.slice(0, 3)
-      }
+    // Shuffle to add variety and prevent same order every time
+    recommendations.value = recommendations.value
+      .map(track => ({ track, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ track }) => track)
+      .slice(0, 50) // Return exactly 50 recommendations
+
+    console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%, ${recommendations.value.length} tracks`)
+
+    tasteProfile.value = {
+      avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
+      topGenre: uniqueArtists[0]?.genres?.[0] || 'Mixed',
+      tracksAnalyzed: uniqueTracks.length,
+      diversityScore: uniqueArtists.length / uniqueTracks.length,
+      topGenres: uniqueArtists.slice(0, 5).flatMap(a => a.genres || []).slice(0, 5)
     }
 
     analysisComplete.value = true
@@ -750,10 +675,19 @@ const updateFilters = (newFilters) => {
   }
 }
 
-const loadMoreRecommendations = async () => {
+const refreshRecommendations = async () => {
+  if (!analysisComplete.value) return
+
   isLoadingRecommendations.value = true
-  await loadRecommendations()
-  isLoadingRecommendations.value = false
+
+  try {
+    // Re-run the analysis to get fresh recommendations
+    await startAnalysis()
+  } catch (error) {
+    console.error('Error refreshing recommendations:', error)
+  } finally {
+    isLoadingRecommendations.value = false
+  }
 }
 
 const stopAnalysis = () => {
