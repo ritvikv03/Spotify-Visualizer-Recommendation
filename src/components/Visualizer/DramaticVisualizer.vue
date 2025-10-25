@@ -91,7 +91,6 @@ let scene, camera, renderer
 let animationId = null
 let audioContext, analyser, dataArray, bufferLength
 let animationSpeed = 1.0
-let audioAnalysis = null
 let beatIntensity = 0
 
 // Visualization objects
@@ -110,7 +109,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (animationId) cancelAnimationFrame(animationId)
-  if (renderer) renderer.dispose()
+  if (renderer) {
+    renderer.dispose()
+    renderer.forceContextLoss()
+  }
   if (audioContext) audioContext.close()
 })
 
@@ -131,10 +133,9 @@ watch(() => props.audioFeatures, (features) => {
 watch(() => props.currentTrack, async (track) => {
   if (track && track.id) {
     try {
-      audioAnalysis = await spotifyService.getAudioAnalysis(track.id)
+      await spotifyService.getAudioAnalysis(track.id)
     } catch (error) {
       console.error('Error loading audio analysis:', error)
-      audioAnalysis = null
     }
   }
 })
@@ -145,20 +146,18 @@ watch(() => props.visualizationMode, (newMode) => {
 })
 
 watch(() => props.theme, (theme) => {
-  updateThemeColors(theme)
-})
+  if (theme) {
+    updateThemeColors(theme)
+  }
+}, { deep: true, immediate: true })
 
 const initThreeJS = () => {
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x000000)
 
-  camera = new THREE.PerspectiveCamera(
-    70,
-    canvas.value.clientWidth / canvas.value.clientHeight,
-    0.1,
-    2000
-  )
-  camera.position.z = 200
+  const aspect = canvas.value.clientWidth / canvas.value.clientHeight
+  camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 3000)
+  camera.position.z = 300
   camera.position.y = 0
   camera.lookAt(0, 0, 0)
 
@@ -205,30 +204,49 @@ const updateThemeColors = (theme) => {
   secondaryColor = new THREE.Color(theme.accent || '#06B6D4')
   accentColor = new THREE.Color(theme.textSecondary || '#EF4444')
 
-  // Clear and recreate lights
-  scene.children.filter(obj => obj.isLight).forEach(light => scene.remove(light))
+  // Remove old lights
+  const lights = scene.children.filter(obj => obj.isLight)
+  lights.forEach(light => scene.remove(light))
 
-  const ambientLight = new THREE.AmbientLight(0x111111, 1.5)
+  // Add new lights with theme colors
+  const ambientLight = new THREE.AmbientLight(0x111111, 2.0)
   scene.add(ambientLight)
 
-  const pointLight1 = new THREE.PointLight(primaryColor.getHex(), 4, 600)
-  pointLight1.position.set(150, 150, 150)
+  const pointLight1 = new THREE.PointLight(primaryColor.getHex(), 5, 800)
+  pointLight1.position.set(200, 200, 200)
   scene.add(pointLight1)
 
-  const pointLight2 = new THREE.PointLight(secondaryColor.getHex(), 4, 600)
-  pointLight2.position.set(-150, -150, 150)
+  const pointLight2 = new THREE.PointLight(secondaryColor.getHex(), 5, 800)
+  pointLight2.position.set(-200, -200, 200)
   scene.add(pointLight2)
 
-  const pointLight3 = new THREE.PointLight(accentColor.getHex(), 3, 500)
-  pointLight3.position.set(0, 0, -150)
+  const pointLight3 = new THREE.PointLight(accentColor.getHex(), 4, 700)
+  pointLight3.position.set(0, 0, -200)
   scene.add(pointLight3)
 
-  // Update existing materials
+  // Update materials in scene
   visualElements.forEach(element => {
-    if (element.material && element.userData.updateColor) {
-      element.userData.updateColor(element, primaryColor, secondaryColor, accentColor)
+    if (element.material && element.userData.colorIndex !== undefined) {
+      updateElementColor(element)
     }
   })
+}
+
+const updateElementColor = (element) => {
+  const colorIndex = element.userData.colorIndex
+  let color
+
+  if (colorIndex < 0.33) {
+    color = primaryColor.clone()
+  } else if (colorIndex < 0.67) {
+    color = new THREE.Color().lerpColors(primaryColor, secondaryColor, (colorIndex - 0.33) / 0.34)
+  } else {
+    color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.67) / 0.33)
+  }
+
+  element.material.color.copy(color)
+  element.material.emissive.copy(color).multiplyScalar(0.5)
+  element.userData.baseColor = color.clone()
 }
 
 const clearScene = () => {
@@ -268,126 +286,139 @@ const initMode = (mode) => {
   }
 }
 
-// KALEIDOSYNC - The signature kaleidoscope effect
+// KALEIDOSYNC - Full screen kaleidoscope
 const createKaleidosync = () => {
-  const symmetry = 12 // 12-fold symmetry for kaleidoscope
-  const segments = 32
-  const radius = 60
+  const symmetry = 12
+  const segments = 40
+  const layers = 6
 
-  for (let sym = 0; sym < symmetry; sym++) {
-    const baseAngle = (sym / symmetry) * Math.PI * 2
+  for (let layer = 0; layer < layers; layer++) {
+    const baseRadius = 80 + layer * 60
 
-    for (let i = 0; i < segments; i++) {
-      const segmentAngle = (i / segments) * (Math.PI / symmetry)
-      const angle = baseAngle + segmentAngle
-      const distance = radius + (i * 3)
+    for (let sym = 0; sym < symmetry; sym++) {
+      const symAngle = (sym / symmetry) * Math.PI * 2
 
-      const geometry = new THREE.BoxGeometry(4, 1, 2)
+      for (let seg = 0; seg < segments; seg++) {
+        const segAngle = (seg / segments) * (Math.PI / symmetry)
+        const angle = symAngle + segAngle
+        const distance = baseRadius + (seg * 4)
 
-      const colorMix = i / segments
-      const color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorMix)
+        const width = 5
+        const depth = 3 + layer
+        const geometry = new THREE.BoxGeometry(width, 1, depth)
 
-      const material = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: color.clone().multiplyScalar(0.5),
-        emissiveIntensity: 1.8,
-        shininess: 100,
-        transparent: true,
-        opacity: 0.9
-      })
-
-      const bar = new THREE.Mesh(geometry, material)
-      bar.position.x = Math.cos(angle) * distance
-      bar.position.z = Math.sin(angle) * distance
-      bar.rotation.y = -angle
-
-      bar.userData = {
-        baseAngle: angle,
-        baseDistance: distance,
-        segment: i,
-        symmetry: sym,
-        baseColor: color.clone(),
-        frequencyIndex: Math.floor((i / segments) * (bufferLength || 1024)),
-        updateColor: (element, primary, secondary, accent) => {
-          const c = new THREE.Color().lerpColors(primary, secondary, colorMix)
-          element.material.color = c
-          element.material.emissive = c.clone().multiplyScalar(0.5)
-          element.userData.baseColor = c.clone()
+        const colorIndex = (seg / segments + layer * 0.15) % 1
+        let color
+        if (colorIndex < 0.33) {
+          color = primaryColor.clone()
+        } else if (colorIndex < 0.67) {
+          color = new THREE.Color().lerpColors(primaryColor, secondaryColor, (colorIndex - 0.33) / 0.34)
+        } else {
+          color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.67) / 0.33)
         }
-      }
 
-      scene.add(bar)
-      visualElements.push(bar)
+        const material = new THREE.MeshPhongMaterial({
+          color: color,
+          emissive: color.clone().multiplyScalar(0.5),
+          emissiveIntensity: 2.0,
+          shininess: 100,
+          transparent: true,
+          opacity: 0.9
+        })
+
+        const bar = new THREE.Mesh(geometry, material)
+        bar.position.x = Math.cos(angle) * distance
+        bar.position.z = Math.sin(angle) * distance
+        bar.rotation.y = -angle
+
+        bar.userData = {
+          baseAngle: angle,
+          distance: distance,
+          segment: seg,
+          layer: layer,
+          baseColor: color.clone(),
+          frequencyIndex: Math.floor((seg / segments) * (bufferLength || 1024)),
+          colorIndex: colorIndex
+        }
+
+        scene.add(bar)
+        visualElements.push(bar)
+      }
     }
   }
 }
 
-// FLOWER - Organic petal pattern
+// FLOWER - Fixed implementation
 const createFlowerPattern = () => {
-  const petals = 8
-  const layers = 20
+  const petalCount = 8
+  const layers = 25
 
   for (let layer = 0; layer < layers; layer++) {
-    for (let petal = 0; petal < petals; petal++) {
-      const angle = (petal / petals) * Math.PI * 2
-      const radius = 30 + layer * 5
+    for (let p = 0; p < petalCount; p++) {
+      const angle = (p / petalCount) * Math.PI * 2
+      const radius = 50 + layer * 8
 
-      const geometry = new THREE.CylinderGeometry(3, 1, 10, 8)
+      const geometry = new THREE.ConeGeometry(5, 15, 8)
 
-      const colorMix = layer / layers
-      const color = new THREE.Color().lerpColors(primaryColor, accentColor, colorMix)
+      const colorIndex = layer / layers
+      let color
+      if (colorIndex < 0.5) {
+        color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorIndex * 2)
+      } else {
+        color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.5) * 2)
+      }
 
       const material = new THREE.MeshPhongMaterial({
         color: color,
         emissive: color.clone().multiplyScalar(0.6),
         emissiveIntensity: 2.0,
         transparent: true,
-        opacity: 0.85
+        opacity: 0.85,
+        shininess: 100
       })
 
-      const petal = new THREE.Mesh(geometry, material)
-      petal.position.x = Math.cos(angle) * radius
-      petal.position.z = Math.sin(angle) * radius
-      petal.rotation.z = Math.PI / 2
-      petal.rotation.y = -angle
+      const mesh = new THREE.Mesh(geometry, material)
+      mesh.position.x = Math.cos(angle) * radius
+      mesh.position.z = Math.sin(angle) * radius
+      mesh.rotation.z = Math.PI / 2
+      mesh.rotation.y = -angle
 
-      petal.userData = {
+      mesh.userData = {
         angle,
         radius,
         layer,
         baseColor: color.clone(),
         frequencyIndex: Math.floor((layer / layers) * (bufferLength || 1024)),
-        updateColor: (element, primary, secondary, accent) => {
-          const c = new THREE.Color().lerpColors(primary, accent, colorMix)
-          element.material.color = c
-          element.material.emissive = c.clone().multiplyScalar(0.6)
-          element.userData.baseColor = c.clone()
-        }
+        colorIndex: colorIndex
       }
 
-      scene.add(petal)
-      visualElements.push(petal)
+      scene.add(mesh)
+      visualElements.push(mesh)
     }
   }
 }
 
-// RADIAL BARS - Classic circular spectrum
+// RADIAL BARS
 const createRadialBars = () => {
-  const barCount = 180
-  const radius = 80
+  const barCount = 200
+  const radius = 120
 
   for (let i = 0; i < barCount; i++) {
     const angle = (i / barCount) * Math.PI * 2
+    const geometry = new THREE.BoxGeometry(3, 1, 5)
 
-    const geometry = new THREE.BoxGeometry(2, 1, 4)
-
-    const colorMix = i / barCount
-    const color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorMix)
+    const colorIndex = i / barCount
+    let color
+    if (colorIndex < 0.5) {
+      color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorIndex * 2)
+    } else {
+      color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.5) * 2)
+    }
 
     const material = new THREE.MeshPhongMaterial({
       color: color,
       emissive: color.clone().multiplyScalar(0.5),
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 1.8,
       shininess: 120
     })
 
@@ -400,12 +431,7 @@ const createRadialBars = () => {
       angle,
       baseColor: color.clone(),
       frequencyIndex: Math.floor((i / barCount) * (bufferLength || 1024)),
-      updateColor: (element, primary, secondary, accent) => {
-        const c = new THREE.Color().lerpColors(primary, secondary, colorMix)
-        element.material.color = c
-        element.material.emissive = c.clone().multiplyScalar(0.5)
-        element.userData.baseColor = c.clone()
-      }
+      colorIndex: colorIndex
     }
 
     scene.add(bar)
@@ -413,28 +439,33 @@ const createRadialBars = () => {
   }
 }
 
-// TUNNEL - 3D tube going into distance
+// TUNNEL
 const createTunnel = () => {
-  const rings = 30
-  const segments = 48
+  const rings = 40
+  const segments = 64
 
   for (let ring = 0; ring < rings; ring++) {
     for (let seg = 0; seg < segments; seg++) {
       const angle = (seg / segments) * Math.PI * 2
-      const radius = 50 - ring * 0.5
-      const z = -ring * 15
+      const radius = 70 - ring * 0.8
+      const z = -ring * 20
 
-      const geometry = new THREE.BoxGeometry(3, 3, 3)
+      const geometry = new THREE.BoxGeometry(4, 4, 4)
 
-      const colorMix = ring / rings
-      const color = new THREE.Color().lerpColors(secondaryColor, accentColor, colorMix)
+      const colorIndex = ring / rings
+      let color
+      if (colorIndex < 0.5) {
+        color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorIndex * 2)
+      } else {
+        color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.5) * 2)
+      }
 
       const material = new THREE.MeshPhongMaterial({
         color: color,
         emissive: color.clone().multiplyScalar(0.7),
         emissiveIntensity: 2.0,
         transparent: true,
-        opacity: 0.8 - colorMix * 0.3
+        opacity: 0.8 - colorIndex * 0.3
       })
 
       const box = new THREE.Mesh(geometry, material)
@@ -447,12 +478,7 @@ const createTunnel = () => {
         angle,
         baseColor: color.clone(),
         frequencyIndex: Math.floor((seg / segments) * (bufferLength || 1024)),
-        updateColor: (element, primary, secondary, accent) => {
-          const c = new THREE.Color().lerpColors(secondary, accent, colorMix)
-          element.material.color = c
-          element.material.emissive = c.clone().multiplyScalar(0.7)
-          element.userData.baseColor = c.clone()
-        }
+        colorIndex: colorIndex
       }
 
       scene.add(box)
@@ -461,14 +487,14 @@ const createTunnel = () => {
   }
 }
 
-// WAVES - Flowing sine waves
+// WAVES - Slower and smoother
 const createWaves = () => {
-  const waves = 40
-  const points = 100
+  const waveCount = 50
+  const points = 120
 
-  for (let wave = 0; wave < waves; wave++) {
+  for (let w = 0; w < waveCount; w++) {
     const pts = []
-    const radius = 30 + wave * 2
+    const radius = 40 + w * 3
 
     for (let i = 0; i <= points; i++) {
       const angle = (i / points) * Math.PI * 2
@@ -481,16 +507,20 @@ const createWaves = () => {
 
     const curve = new THREE.CatmullRomCurve3(pts)
     curve.closed = true
+    const tubeGeometry = new THREE.TubeGeometry(curve, points, 1.5, 8, true)
 
-    const tubeGeometry = new THREE.TubeGeometry(curve, points, 1.2, 8, true)
-
-    const colorMix = wave / waves
-    const color = new THREE.Color().lerpColors(primaryColor, accentColor, colorMix)
+    const colorIndex = w / waveCount
+    let color
+    if (colorIndex < 0.5) {
+      color = new THREE.Color().lerpColors(primaryColor, secondaryColor, colorIndex * 2)
+    } else {
+      color = new THREE.Color().lerpColors(secondaryColor, accentColor, (colorIndex - 0.5) * 2)
+    }
 
     const material = new THREE.MeshPhongMaterial({
       color: color,
       emissive: color.clone().multiplyScalar(0.6),
-      emissiveIntensity: 1.8,
+      emissiveIntensity: 2.0,
       transparent: true,
       opacity: 0.9
     })
@@ -499,16 +529,12 @@ const createWaves = () => {
     tube.rotation.x = Math.PI / 2
 
     tube.userData = {
-      wave,
-      baseY: (wave - waves / 2) * 3,
+      wave: w,
+      baseY: (w - waveCount / 2) * 4,
       baseColor: color.clone(),
-      frequencyIndex: Math.floor((wave / waves) * (bufferLength || 1024)),
-      updateColor: (element, primary, secondary, accent) => {
-        const c = new THREE.Color().lerpColors(primary, accent, colorMix)
-        element.material.color = c
-        element.material.emissive = c.clone().multiplyScalar(0.6)
-        element.userData.baseColor = c.clone()
-      }
+      frequencyIndex: Math.floor((w / waveCount) * (bufferLength || 1024)),
+      phaseOffset: w * 0.15,
+      colorIndex: colorIndex
     }
 
     tube.position.y = tube.userData.baseY
@@ -520,12 +546,11 @@ const createWaves = () => {
 
 const getAudioData = () => {
   if (!analyser || !dataArray || !props.isPlaying) {
-    // Procedural animation
     const time = Date.now() * animationSpeed * 0.001
-    if (Math.random() < 0.015 * animationSpeed) {
+    if (Math.random() < 0.01 * animationSpeed) {
       beatIntensity = 1.0
     }
-    beatIntensity *= 0.93
+    beatIntensity *= 0.94
     return null
   }
 
@@ -537,7 +562,7 @@ const getAudioData = () => {
   if (bassLevel > 0.7 && beatIntensity < 0.5) {
     beatIntensity = 1.0
   }
-  beatIntensity *= 0.93
+  beatIntensity *= 0.94
 
   return dataArray
 }
@@ -546,7 +571,7 @@ const animate = () => {
   animationId = requestAnimationFrame(animate)
 
   const audioData = getAudioData()
-  const time = Date.now() * 0.0003 * animationSpeed
+  const time = Date.now() * 0.0002 * animationSpeed
 
   switch(props.visualizationMode) {
     case 'kaleidosync':
@@ -582,21 +607,21 @@ const updateKaleidosync = (audioData, time) => {
 
     intensity += beatIntensity * 1.5
 
-    const targetHeight = intensity * 30
-    bar.scale.y = THREE.MathUtils.lerp(bar.scale.y || 1, targetHeight, 0.25)
+    const targetHeight = intensity * 40
+    bar.scale.y = THREE.MathUtils.lerp(bar.scale.y || 1, targetHeight, 0.2)
     bar.position.y = (bar.scale.y - 1) / 2
 
-    bar.rotation.y = -bar.userData.baseAngle + time * 0.2
+    bar.rotation.y = -bar.userData.baseAngle + time * 0.15
 
     const hsl = {}
     bar.userData.baseColor.getHSL(hsl)
     hsl.l = 0.45 + intensity * 0.25
     bar.material.color.setHSL(hsl.h, hsl.s, hsl.l)
     bar.material.emissive.setHSL(hsl.h, hsl.s, hsl.l * 0.6)
-    bar.material.emissiveIntensity = 1.5 + intensity
+    bar.material.emissiveIntensity = 1.8 + intensity
   })
 
-  camera.rotation.z = Math.sin(time * 0.5) * 0.03
+  camera.rotation.z = Math.sin(time * 0.3) * 0.02
 }
 
 const updateFlowerPattern = (audioData, time) => {
@@ -615,17 +640,17 @@ const updateFlowerPattern = (audioData, time) => {
     const scale = 1 + intensity * 0.8
     petal.scale.set(scale, scale, scale)
 
-    petal.rotation.y = -petal.userData.angle + time * 0.3
+    petal.rotation.y = -petal.userData.angle + time * 0.25
 
     const hsl = {}
     petal.userData.baseColor.getHSL(hsl)
-    hsl.h = (hsl.h + time * 0.02) % 1
-    petal.material.color.setHSL(hsl.h, hsl.s, 0.5 + intensity * 0.2)
+    hsl.l = 0.5 + intensity * 0.2
+    petal.material.color.setHSL(hsl.h, hsl.s, hsl.l)
     petal.material.emissive.setHSL(hsl.h, hsl.s, 0.6)
-    petal.material.emissiveIntensity = 1.8 + intensity * 0.7
+    petal.material.emissiveIntensity = 2.0 + intensity * 0.7
   })
 
-  camera.position.y = Math.sin(time * 0.6) * 20
+  camera.position.y = Math.sin(time * 0.4) * 20
   camera.lookAt(0, 0, 0)
 }
 
@@ -642,16 +667,16 @@ const updateRadialBars = (audioData, time) => {
 
     intensity += beatIntensity * 2
 
-    const targetHeight = intensity * 35
+    const targetHeight = intensity * 50
     bar.scale.y = THREE.MathUtils.lerp(bar.scale.y || 1, targetHeight, 0.2)
     bar.position.y = (bar.scale.y - 1) / 2
 
     const hsl = {}
     bar.userData.baseColor.getHSL(hsl)
-    hsl.h = (hsl.h + time * 0.05) % 1
-    bar.material.color.setHSL(hsl.h, hsl.s, 0.5 + intensity * 0.2)
+    hsl.l = 0.5 + intensity * 0.2
+    bar.material.color.setHSL(hsl.h, hsl.s, hsl.l)
     bar.material.emissive.setHSL(hsl.h, hsl.s, 0.5)
-    bar.material.emissiveIntensity = 1.3 + intensity
+    bar.material.emissiveIntensity = 1.5 + intensity
   })
 }
 
@@ -671,16 +696,17 @@ const updateTunnel = (audioData, time) => {
     const scale = 1 + intensity * 0.6
     box.scale.set(scale, scale, scale)
 
-    box.rotation.z += 0.01 * (1 + intensity)
+    box.rotation.z += 0.008 * (1 + intensity)
 
     const hsl = {}
     box.userData.baseColor.getHSL(hsl)
-    box.material.color.setHSL(hsl.h, hsl.s, 0.4 + intensity * 0.3)
+    hsl.l = 0.4 + intensity * 0.3
+    box.material.color.setHSL(hsl.h, hsl.s, hsl.l)
     box.material.emissive.setHSL(hsl.h, hsl.s, 0.6)
-    box.material.emissiveIntensity = 1.8 + intensity
+    box.material.emissiveIntensity = 2.0 + intensity
   })
 
-  camera.position.z = 200 + Math.sin(time) * 30
+  camera.position.z = 300 + Math.sin(time * 0.5) * 30
 }
 
 const updateWaves = (audioData, time) => {
@@ -691,7 +717,7 @@ const updateWaves = (audioData, time) => {
       const freqValue = audioData[tube.userData.frequencyIndex] / 255
       intensity = freqValue * 3 + 0.2
     } else {
-      intensity = Math.abs(Math.sin(time * 1.8 + tube.userData.wave * 0.2)) + 0.2
+      intensity = Math.abs(Math.sin(time * 1.2 + tube.userData.wave * 0.2)) + 0.2
     }
 
     intensity += beatIntensity * 1.5
@@ -699,26 +725,31 @@ const updateWaves = (audioData, time) => {
     const scale = 1 + intensity * 0.5
     tube.scale.set(scale, scale, 1)
 
-    const wave = Math.sin(time * 2 + tube.userData.wave * 0.3) * intensity * 12
+    // SLOWER wave motion
+    const wave = Math.sin(time * 1.2 + tube.userData.phaseOffset) * intensity * 10
     tube.position.y = tube.userData.baseY + wave
 
-    tube.rotation.z = time * (0.15 + intensity * 0.25)
+    // SLOWER rotation
+    tube.rotation.z += 0.002 * (0.5 + intensity * 0.3)
 
     const hsl = {}
     tube.userData.baseColor.getHSL(hsl)
-    hsl.h = (hsl.h + time * 0.04) % 1
-    tube.material.color.setHSL(hsl.h, hsl.s, 0.4 + intensity * 0.3)
+    hsl.l = 0.4 + intensity * 0.3
+    tube.material.color.setHSL(hsl.h, hsl.s, hsl.l)
     tube.material.emissive.setHSL(hsl.h, hsl.s, 0.6)
-    tube.material.emissiveIntensity = 1.5 + intensity * 0.9
+    tube.material.emissiveIntensity = 1.8 + intensity * 0.9
   })
 
-  camera.position.z = 200 + Math.sin(time * 0.7) * 25
+  camera.position.z = 300 + Math.sin(time * 0.5) * 25
 }
 
 const onWindowResize = () => {
-  camera.aspect = canvas.value.clientWidth / canvas.value.clientHeight
+  const width = canvas.value.clientWidth
+  const height = canvas.value.clientHeight
+
+  camera.aspect = width / height
   camera.updateProjectionMatrix()
-  renderer.setSize(canvas.value.clientWidth, canvas.value.clientHeight)
+  renderer.setSize(width, height)
 }
 </script>
 
