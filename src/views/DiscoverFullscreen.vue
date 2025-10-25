@@ -37,7 +37,7 @@
               </svg>
             </button>
 
-            <div v-if="showModeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[280px] max-w-[calc(100vw-2rem)]">
+            <div v-if="showModeMenu" class="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto glass-dropdown w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[280px] max-w-[calc(100vw-1.5rem)]">
               <div class="px-3 py-2 border-b border-white border-opacity-10">
                 <p class="text-xs text-gray-400 font-medium">Visualization Modes</p>
               </div>
@@ -45,7 +45,7 @@
                 v-for="mode in visualizerModes"
                 :key="mode.id"
                 @click="currentMode = mode.id; showModeMenu = false"
-                class="dropdown-item-detailed"
+                class="dropdown-item-detailed touch-manipulation active:bg-white active:bg-opacity-10"
                 :class="{ 'active': currentMode === mode.id }"
               >
                 <div class="flex items-start gap-3 flex-1">
@@ -76,12 +76,12 @@
               </svg>
             </button>
 
-            <div v-if="showThemeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[180px] max-w-[calc(100vw-2rem)]">
+            <div v-if="showThemeMenu" class="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto glass-dropdown w-[calc(100vw-1.5rem)] sm:w-auto sm:min-w-[180px] max-w-[calc(100vw-1.5rem)]">
               <button
                 v-for="(theme, key) in themeStore.themes"
                 :key="key"
                 @click="themeStore.currentTheme = key; showThemeMenu = false"
-                class="dropdown-item"
+                class="dropdown-item touch-manipulation active:bg-white active:bg-opacity-10"
                 :class="{ 'active': themeStore.currentTheme === key }"
               >
                 <div class="w-4 h-4 rounded-full" :style="{ background: theme.gradient }"></div>
