@@ -905,6 +905,16 @@ const updateGradientCycle = (time) => {
 
 const initAudio = async () => {
   try {
+    // Detect if device is mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                     (window.innerWidth <= 768)
+
+    // Skip microphone on mobile devices to avoid permission prompts
+    if (isMobile) {
+      console.log('📱 Mobile device detected - using algorithmic visualization (no microphone prompt)')
+      return
+    }
+
     audioContext = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioContext.createAnalyser()
     analyser.fftSize = 1024
@@ -916,9 +926,9 @@ const initAudio = async () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const source = audioContext.createMediaStreamSource(stream)
       source.connect(analyser)
-      console.log('🎤 Microphone audio analysis enabled')
+      console.log('🎤 Desktop: Microphone audio analysis enabled')
     } catch (e) {
-      console.log('🎨 Using algorithmic visualization (no microphone access)')
+      console.log('🎨 Using algorithmic visualization (microphone denied)')
     }
   } catch (error) {
     console.log('🎨 Using algorithmic visualization')
