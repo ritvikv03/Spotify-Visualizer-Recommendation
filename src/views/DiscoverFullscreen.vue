@@ -158,20 +158,32 @@
               class="glass-track-card p-3 rounded-lg transition-all hover:bg-opacity-15"
             >
               <!-- Click area for playing -->
-              <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer mb-2">
-                <img
-                  v-if="track.album?.images?.[2]?.url"
-                  :src="track.album.images[2].url"
-                  alt="Album art"
-                  class="w-12 h-12 rounded flex-shrink-0"
-                />
-                <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-white truncate text-sm">{{ track.name }}</p>
-                  <p class="text-xs text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+              <div class="flex items-center gap-2 mb-2">
+                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1">
+                  <img
+                    v-if="track.album?.images?.[2]?.url"
+                    :src="track.album.images[2].url"
+                    alt="Album art"
+                    class="w-12 h-12 rounded flex-shrink-0"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <p class="font-semibold text-white truncate text-sm">{{ track.name }}</p>
+                    <p class="text-xs text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+                  </div>
+                  <div class="text-xs" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
+                    {{ track.popularity }}%
+                  </div>
                 </div>
-                <div class="text-xs" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
-                  {{ track.popularity }}%
-                </div>
+                <!-- Replace button -->
+                <button
+                  @click="replaceTrack(track)"
+                  class="w-7 h-7 flex items-center justify-center rounded-full bg-white bg-opacity-5 hover:bg-opacity-15 transition-all text-gray-400 hover:text-red-400"
+                  title="Replace this song"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
               </div>
 
               <!-- Action Buttons -->
@@ -229,6 +241,7 @@ const isPlaying = ref(false)
 const currentTrack = ref(null)
 const audioFeatures = ref(null)
 const recommendations = ref([])
+const replacementTracks = ref([])
 const currentMode = ref('kaleidosync')
 const showModeMenu = ref(false)
 const showThemeMenu = ref(false)
@@ -238,11 +251,11 @@ const themeDropdownRef = ref(null)
 const isGeneratingPlaylist = ref(false)
 
 const visualizerModes = [
-  { id: 'kaleidosync', name: 'Kaleidosync', icon: IconSpectrum, description: 'Classic 12-fold symmetry' },
-  { id: 'flower', name: 'Flower', icon: IconParticles, description: 'Organic petal pattern' },
-  { id: 'bars', name: 'Radial Bars', icon: IconWaveform, description: 'Circular spectrum' },
-  { id: 'tunnel', name: 'Tunnel', icon: IconGem, description: '3D depth effect' },
-  { id: 'waves', name: 'Waves', icon: IconMusic, description: 'Flowing sine waves' }
+  { id: 'kaleidosync', name: 'Kaleidoscope', icon: IconSpectrum, description: 'Multi-layer symmetrical patterns' },
+  { id: 'vortex', name: 'Vortex', icon: IconGem, description: 'Infinite spiral tunnel' },
+  { id: 'starfield', name: 'Star Field', icon: IconParticles, description: 'Cosmic nebula with stars' },
+  { id: 'mandala', name: 'Fractal Mandala', icon: IconMusic, description: 'Recursive sacred geometry' },
+  { id: 'bars', name: 'Radial Bars', icon: IconWaveform, description: 'Circular audio spectrum' }
 ]
 
 let player = null
@@ -379,7 +392,7 @@ const startAnalysis = async () => {
       spotifyService,
       uniqueTracks,
       uniqueArtists,
-      { maxPopularity: 50 }
+      { maxPopularity: 100 }
     )
 
     // Sort recommendations by popularity in descending order (most popular first)
@@ -399,7 +412,9 @@ const startAnalysis = async () => {
       })
     }
 
-    recommendations.value = sortedTracks
+    // Split into displayed recommendations (first 20) and replacement pool (rest)
+    recommendations.value = sortedTracks.slice(0, 20)
+    replacementTracks.value = sortedTracks.slice(20)
     showSidebar.value = true
   } catch (error) {
     console.error('Analysis error:', error)
@@ -479,6 +494,25 @@ const toggleLikeTrack = async (track) => {
   } catch (error) {
     console.error('Error toggling like:', error)
     alert('Failed to update liked status')
+  }
+}
+
+const replaceTrack = async (track) => {
+  // Check if we have replacement tracks available
+  if (replacementTracks.value.length === 0) {
+    alert('No more replacement tracks available')
+    return
+  }
+
+  // Get the next replacement track
+  const replacementTrack = replacementTracks.value.shift()
+
+  // Find the index of the track to replace
+  const index = recommendations.value.findIndex(t => t.id === track.id)
+
+  if (index !== -1) {
+    // Replace the track
+    recommendations.value.splice(index, 1, replacementTrack)
   }
 }
 
