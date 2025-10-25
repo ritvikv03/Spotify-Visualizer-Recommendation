@@ -389,7 +389,7 @@ const recommendationStrategy = ref(null) // Track which strategy was used
 const recommendationConfidence = ref(0) // Bandit algorithm confidence
 const currentContext = ref(null) // Current listening context (time, mood, etc.)
 const discoveryFilters = ref({
-  maxPopularity: 50,
+  maxPopularity: 100,
   targetEnergy: 0.5,
   targetDanceability: 0.5,
   targetValence: 0.5,
@@ -571,7 +571,7 @@ const startAnalysis = async () => {
         {
           useMultiArmedBandit: true,
           fallbackToAll: false,
-          limit: 50,
+          limit: 100, // Fetch more for better variety
           serendipityLevel: serendipityLevel.value,
           maxPopularity: discoveryFilters.value.maxPopularity
         }
@@ -588,7 +588,13 @@ const startAnalysis = async () => {
         recommendations.value
       )
 
-      console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%`)
+      // Shuffle to add variety and prevent same order every time
+      recommendations.value = recommendations.value
+        .map(track => ({ track, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ track }) => track)
+
+      console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%), ${recommendations.value.length} unique tracks`)
 
       tasteProfile.value = {
         avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
@@ -606,7 +612,7 @@ const startAnalysis = async () => {
         recentTracks: allTracks.slice(0, 50),
         serendipityLevel: serendipityLevel.value,
         maxPopularity: discoveryFilters.value.maxPopularity,
-        limit: 50
+        limit: 100 // Fetch more for better variety
       })
 
       // Extract recommendations
@@ -617,6 +623,12 @@ const startAnalysis = async () => {
       recommendations.value = await feedbackLearningEngine.filterRecommendations(
         recommendations.value
       )
+
+      // Shuffle to add variety and prevent same order every time
+      recommendations.value = recommendations.value
+        .map(track => ({ track, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ track }) => track)
 
       tasteProfile.value = {
         avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
@@ -636,6 +648,13 @@ const startAnalysis = async () => {
       )
 
       recommendations.value = result.tracks
+
+      // Shuffle to add variety and prevent same order every time
+      recommendations.value = recommendations.value
+        .map(track => ({ track, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ track }) => track)
+
       tasteProfile.value = {
         avgPopularity: result.analysis.avgPopularity,
         topGenre: result.analysis.recentTrends[0] || 'Mixed',
@@ -644,9 +663,9 @@ const startAnalysis = async () => {
         topGenres: result.analysis.recentTrends.slice(0, 3)
       }
     }
-    
+
     analysisComplete.value = true
-    console.log(`🎉 Found ${recommendations.value.length} hidden gems!`)
+    console.log(`🎉 Found ${recommendations.value.length} unique hidden gems!`)
     
   } catch (error) {
     console.error('❌ Analysis error:', error)
