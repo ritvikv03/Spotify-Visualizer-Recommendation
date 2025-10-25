@@ -1,3 +1,5 @@
+import { filterPlayableTracks, cleanTrackList, logPlayabilityStats } from '../utils/trackPlayability.js'
+
 export class RecommendationEngine {
   /**
    * Analyze user's music taste from available data
@@ -153,17 +155,25 @@ export class RecommendationEngine {
     try {
       // Get user's saved tracks (these are tracks they've liked but might not listen to often)
       const savedTracksData = await spotifyService.getSavedTracks(50).catch(() => ({ items: [] }))
-      const savedTracks = savedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
+      const savedTracksRaw = savedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
+
+      // Filter out unplayable saved tracks
+      const savedTracks = filterPlayableTracks(savedTracksRaw)
+      logPlayabilityStats(savedTracksRaw, savedTracks, 'saved tracks')
+
+      // Filter playable tracks from input
+      const playableTracks = filterPlayableTracks(tracks)
+      logPlayabilityStats(tracks, playableTracks, 'top tracks')
 
       // Combine with top tracks
-      const allAvailableTracks = [...tracks, ...savedTracks]
+      const allAvailableTracks = [...playableTracks, ...savedTracks]
 
       // Deduplicate
       const uniqueTracks = Array.from(
         new Map(allAvailableTracks.filter(t => t && t.id).map(t => [t.id, t])).values()
       )
 
-      console.log(`📚 Found ${uniqueTracks.length} tracks in library to analyze`)
+      console.log(`📚 Found ${uniqueTracks.length} playable tracks in library to analyze`)
 
       // Find "hidden gems" - lower popularity tracks from favorite genres/artists
       const hiddenGems = uniqueTracks.filter(track => {
@@ -233,7 +243,12 @@ export class RecommendationEngine {
           throw new Error('No recommendations returned from Spotify')
         }
 
-        recommendedTracks = response.tracks
+        const rawTracks = response.tracks
+
+        // Filter out unplayable tracks
+        recommendedTracks = filterPlayableTracks(rawTracks)
+        logPlayabilityStats(rawTracks, recommendedTracks, 'Spotify API recommendations')
+
         console.log('✅ Got recommendations from Spotify API')
 
       } catch (apiError) {

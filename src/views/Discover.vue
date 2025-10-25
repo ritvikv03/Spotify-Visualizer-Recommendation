@@ -353,6 +353,8 @@ import spotifyService from '../services/spotify'
 import RecommendationEngine from '../services/recommendationEngine'
 import mlRecommendationEngine from '../services/mlRecommendationEngine'
 import feedbackLearningEngine from '../services/feedbackLearningEngine'
+import recommendationOrchestrator from '../services/recommendationOrchestrator'
+import { isTrackPlayable, canPlayWithSDK } from '../utils/trackPlayability'
 import MusicVisualizer from '../components/Visualizer/MusicVisualizer.vue'
 import DiscoveryFilters from '../components/Discovery/DiscoveryFilters.vue'
 import SerendipitySlider from '../components/Discovery/SerendipitySlider.vue'
@@ -382,6 +384,10 @@ const showThemeMenu = ref(false)
 const serendipityLevel = ref(0.3) // ML: Exploration level (0-1)
 const userAudioPreferences = ref(null) // ML: Learned audio preferences
 const useMLEngine = ref(true) // Toggle between ML and basic engine
+const useOrchestrator = ref(true) // Use YouTube Music-inspired orchestrator
+const recommendationStrategy = ref(null) // Track which strategy was used
+const recommendationConfidence = ref(0) // Bandit algorithm confidence
+const currentContext = ref(null) // Current listening context (time, mood, etc.)
 const discoveryFilters = ref({
   maxPopularity: 50,
   targetEnergy: 0.5,
@@ -403,9 +409,10 @@ onMounted(async () => {
   checkCurrentPlayback()
   themeStore.loadSavedTheme()
 
-  // Initialize ML engines
+  // Initialize ML engines and orchestrator
   await mlRecommendationEngine.initialize()
   await feedbackLearningEngine.initialize()
+  await recommendationOrchestrator.initialize()
 
   // Load learned preferences if available
   const learnedPrefs = await feedbackLearningEngine.getLearnedPreferences()
@@ -413,6 +420,10 @@ onMounted(async () => {
     userAudioPreferences.value = learnedPrefs
     console.log('✅ Loaded learned preferences:', learnedPrefs)
   }
+
+  // Get current listening context
+  currentContext.value = recommendationOrchestrator.getCurrentContext()
+  console.log('🎯 Current context:', currentContext.value)
 
   // Close theme menu when clicking outside
   document.addEventListener('click', (e) => {
@@ -551,9 +562,42 @@ const startAnalysis = async () => {
       console.log('Saved tracks unavailable')
     }
 
-    // Use ML recommendation engine if enabled
+    // Use orchestrator if enabled (YouTube Music-inspired recommendations)
     let result
-    if (useMLEngine.value) {
+    if (useOrchestrator.value) {
+      console.log('🎼 Using YouTube Music-Inspired Orchestrator...')
+      result = await recommendationOrchestrator.generateRecommendations(
+        spotifyService,
+        {
+          useMultiArmedBandit: true,
+          fallbackToAll: false,
+          limit: 50,
+          serendipityLevel: serendipityLevel.value,
+          maxPopularity: discoveryFilters.value.maxPopularity
+        }
+      )
+
+      // Extract recommendations
+      recommendations.value = result.tracks
+      recommendationStrategy.value = result.strategy
+      recommendationConfidence.value = result.confidence || 0
+      currentContext.value = result.metadata?.context || currentContext.value
+
+      // Filter out disliked tracks
+      recommendations.value = await feedbackLearningEngine.filterRecommendations(
+        recommendations.value
+      )
+
+      console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%`)
+
+      tasteProfile.value = {
+        avgPopularity: allTracks.reduce((sum, t) => sum + (t.popularity || 0), 0) / allTracks.length,
+        topGenre: uniqueArtists[0]?.genres?.[0] || 'Mixed',
+        tracksAnalyzed: uniqueTracks.length,
+        diversityScore: uniqueArtists.length / uniqueTracks.length,
+        topGenres: uniqueArtists.slice(0, 5).flatMap(a => a.genres || []).slice(0, 5)
+      }
+    } else if (useMLEngine.value) {
       console.log('🧠 Using ML Recommendation Engine...')
       result = await mlRecommendationEngine.generateAdvancedRecommendations({
         userTracks: uniqueTracks,
@@ -699,6 +743,24 @@ const stopAnalysis = () => {
 
 const playTrack = async (track) => {
   try {
+    // Validate track is playable before attempting to play
+    if (!isTrackPlayable(track)) {
+      console.error('❌ Track is not playable:', track.name)
+      alert(`Sorry, "${track.name}" is not available for playback. This might be due to regional restrictions or the track being unavailable.`)
+      return
+    }
+
+    if (!canPlayWithSDK(track)) {
+      console.warn('⚠️ Track may not be playable with Web Playback SDK:', track.name)
+    }
+
+    // Ensure track has valid URI
+    if (!track.uri || !track.uri.startsWith('spotify:track:')) {
+      console.error('❌ Invalid track URI:', track.uri)
+      alert(`Sorry, "${track.name}" cannot be played - invalid track format.`)
+      return
+    }
+
     if (deviceId) {
       await spotifyService.play([track.uri], deviceId)
     } else {
@@ -707,8 +769,18 @@ const playTrack = async (track) => {
     }
     currentTrack.value = track
     isPlaying.value = true
+    console.log('✅ Now playing:', track.name)
   } catch (error) {
     console.error('Error playing track:', error)
+
+    // Provide user-friendly error message
+    if (error.status === 403) {
+      alert('Playback requires Spotify Premium. Please upgrade your account to play full tracks.')
+    } else if (error.status === 404) {
+      alert(`Track "${track.name}" not found or unavailable.`)
+    } else {
+      alert(`Unable to play "${track.name}". Error: ${error.message || 'Unknown error'}`)
+    }
   }
 }
 
@@ -809,6 +881,16 @@ const handleFeedback = async ({ action, track }) => {
     // Remove from current recommendations
     recommendations.value = recommendations.value.filter(t => t.id !== track.id)
     console.log('👎 Track removed from recommendations')
+  }
+
+  // Record feedback in orchestrator (updates multi-armed bandit)
+  if (useOrchestrator.value && recommendationStrategy.value) {
+    await recommendationOrchestrator.recordFeedback(
+      track,
+      action,
+      recommendationStrategy.value
+    )
+    console.log(`🎯 Updated bandit algorithm for strategy: ${recommendationStrategy.value}`)
   }
 
   // Reload learned preferences
