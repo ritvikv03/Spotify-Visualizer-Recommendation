@@ -83,7 +83,7 @@ export class RecommendationEngine {
    */
   static buildRecommendationParams(seeds, analysis, filters = {}) {
     const params = {
-      limit: 20
+      limit: 50
     }
 
     // Add seeds (up to 5 total across tracks, artists, genres)
