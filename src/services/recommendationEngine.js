@@ -153,13 +153,13 @@ export class RecommendationEngine {
     console.log('🔄 Using fallback: generating recommendations from user library and artist top tracks')
 
     const maxPopularity = filters.maxPopularity || 100
-    const targetCount = 150 // Generate 150 tracks for large pool (20 displayed + 130 for refresh/replace)
+    const targetCount = 300 // Generate 300 tracks for huge pool (20 displayed + 280 for refresh/replace)
 
     try {
       let allRecommendations = []
 
       // Strategy 1: Get top tracks from user's favorite artists
-      const topArtists = artists.slice(0, 20) // Get more artists for larger variety (was 10, now 20)
+      const topArtists = artists.slice(0, 30) // Get more artists for massive variety (was 20, now 30)
       console.log(`🎤 Fetching top tracks from ${topArtists.length} artists...`)
 
       for (const artist of topArtists) {
@@ -174,18 +174,18 @@ export class RecommendationEngine {
       }
 
       // Strategy 2: Get related artists' top tracks for discovery
-      const relatedArtistSamples = artists.slice(0, 5) // Sample from top 5 artists (was 3, now 5)
+      const relatedArtistSamples = artists.slice(0, 10) // Sample from top 10 artists (was 5, now 10)
       for (const artist of relatedArtistSamples) {
         try {
           const related = await spotifyService.getRelatedArtists(artist.id)
           if (related && related.artists) {
-            // Get top tracks from first 5 related artists (was 3, now 5)
-            const relatedArtists = related.artists.slice(0, 5)
+            // Get top tracks from first 8 related artists (was 5, now 8)
+            const relatedArtists = related.artists.slice(0, 8)
             for (const relatedArtist of relatedArtists) {
               try {
                 const topTracks = await spotifyService.getArtistTopTracks(relatedArtist.id)
                 if (topTracks && topTracks.tracks) {
-                  allRecommendations.push(...topTracks.tracks.slice(0, 3)) // Top 3 from each (was 2, now 3)
+                  allRecommendations.push(...topTracks.tracks.slice(0, 5)) // Top 5 from each (was 3, now 5)
                 }
               } catch (e) {
                 // Silently skip failed related artists
@@ -227,14 +227,17 @@ export class RecommendationEngine {
 
       console.log(`📊 Found ${filteredByPopularity.length} unique tracks within popularity range (≤${maxPopularity}%)`)
 
-      // Remove tracks that are already in user's top tracks (avoid duplicates)
-      const userTrackIds = new Set(tracks.map(t => t.id))
-      const newDiscoveries = filteredByPopularity.filter(t => !userTrackIds.has(t.id))
+      // Don't filter out user's top tracks - include everything for variety
+      // (Users might want to rediscover their own tracks in new contexts)
+      const allAvailable = filteredByPopularity
 
-      // Sort by popularity descending (most popular first)
-      const sortedTracks = newDiscoveries.sort((a, b) => b.popularity - a.popularity)
+      // Randomize order for variety on each visit
+      const shuffled = allAvailable.sort(() => Math.random() - 0.5)
 
-      // Take top 50 tracks
+      // Sort by popularity descending (most popular first) for quality
+      const sortedTracks = shuffled.sort((a, b) => b.popularity - a.popularity)
+
+      // Take target count
       const recommendations = sortedTracks.slice(0, targetCount)
 
       console.log(`✅ Generated ${recommendations.length} recommendations from library (max ${maxPopularity}% popularity, target ${targetCount})`)

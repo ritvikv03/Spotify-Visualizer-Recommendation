@@ -191,10 +191,10 @@
                     class="w-14 h-14 sm:w-12 sm:h-12 rounded flex-shrink-0"
                   />
                   <div class="flex-1 min-w-0">
-                    <p class="font-semibold text-white truncate text-sm sm:text-base">{{ track.name }}</p>
+                    <p class="font-semibold text-white truncate text-sm sm:text-base">{{ cleanTrackName(track.name) }}</p>
                     <p class="text-xs sm:text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
                   </div>
-                  <div class="text-xs sm:text-sm font-semibold" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
+                  <div class="text-xs sm:text-sm font-semibold tabular-nums w-12 text-right" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
                     {{ track.popularity }}%
                   </div>
                 </div>
@@ -537,6 +537,13 @@ const toggleLikeTrack = async (track) => {
     console.error('Error toggling like:', error)
     alert('Failed to update liked status')
   }
+}
+
+// Clean track name - remove parentheses and content inside them
+const cleanTrackName = (name) => {
+  if (!name) return ''
+  // Remove anything in parentheses: (feat. Artist), (Remix), (Remastered), etc.
+  return name.replace(/\s*\([^)]*\)/g, '').trim()
 }
 
 const replaceTrack = async (track) => {
