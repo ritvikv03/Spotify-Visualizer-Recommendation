@@ -168,7 +168,7 @@ import { reactive } from 'vue'
 const emit = defineEmits(['update'])
 
 const filters = reactive({
-  maxPopularity: 50,
+  maxPopularity: 100,
   targetEnergy: 0.5,
   targetDanceability: 0.5,
   targetValence: 0.5,
@@ -184,7 +184,7 @@ const emitFilters = () => {
 }
 
 const resetFilters = () => {
-  filters.maxPopularity = 50
+  filters.maxPopularity = 100
   filters.targetEnergy = 0.5
   filters.targetDanceability = 0.5
   filters.targetValence = 0.5
