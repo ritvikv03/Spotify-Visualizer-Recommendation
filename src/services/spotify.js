@@ -440,5 +440,37 @@ export default {
       console.error('Error fetching current user:', error)
       throw error
     }
+  },
+
+  // Helper: Create playlist and add tracks in one go
+  async createPlaylistWithTracks(name, tracks, description = '', isPublic = false) {
+    try {
+      // Get current user
+      const user = await this.getCurrentUser()
+
+      // Create the playlist
+      const playlist = await this.createPlaylist(
+        user.id,
+        name,
+        description || 'Created by Spotify Discovery Studio',
+        isPublic
+      )
+
+      // Add tracks to playlist (Spotify API accepts max 100 tracks per request)
+      if (tracks && tracks.length > 0) {
+        const trackUris = tracks.map(track => track.uri || `spotify:track:${track.id}`)
+
+        // Split into chunks of 100
+        for (let i = 0; i < trackUris.length; i += 100) {
+          const chunk = trackUris.slice(i, i + 100)
+          await this.addTracksToPlaylist(playlist.id, chunk)
+        }
+      }
+
+      return playlist
+    } catch (error) {
+      console.error('Error creating playlist with tracks:', error)
+      throw error
+    }
   }
 }
