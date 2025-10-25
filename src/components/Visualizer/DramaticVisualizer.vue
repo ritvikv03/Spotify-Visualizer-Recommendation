@@ -696,13 +696,25 @@ watch(() => props.currentTrack, async (track) => {
     try {
       // Fetch audio analysis from Spotify
       audioAnalysis = await spotifyService.getAudioAnalysis(track.id)
-      console.log('Audio analysis loaded:', audioAnalysis)
 
-      // Start playback position polling
-      startPlaybackSync()
+      if (audioAnalysis && audioAnalysis.beats && audioAnalysis.bars && audioAnalysis.sections) {
+        console.log('✓ Audio analysis loaded:', {
+          beats: audioAnalysis.beats.length,
+          bars: audioAnalysis.bars.length,
+          sections: audioAnalysis.sections.length,
+          duration: audioAnalysis.track?.duration || 0
+        })
+
+        // Start playback position polling
+        startPlaybackSync()
+      } else {
+        console.warn('Audio analysis incomplete, using procedural fallback')
+        audioAnalysis = null
+      }
     } catch (error) {
-      console.error('Error loading audio analysis:', error)
+      console.error('❌ Error loading audio analysis:', error.message || error)
       audioAnalysis = null
+      // Continue with procedural visualization
     }
   } else {
     audioAnalysis = null
@@ -845,10 +857,10 @@ const updateShader = (mode) => {
 }
 
 const updateThemeColors = (theme) => {
-  if (!theme) return
+  // Use default color if no theme provided
+  const baseColor = theme?.primary || '#8B5CF6'
 
   // Generate full gradient palettes from theme colors
-  const baseColor = theme.primary || '#8B5CF6'
   gradientColors = generateGradientPalette(baseColor, 7)
 
   // Set initial colors from gradient
@@ -861,6 +873,8 @@ const updateThemeColors = (theme) => {
     shaderMaterial.uniforms.uColor2.value = secondaryColor
     shaderMaterial.uniforms.uColor3.value = accentColor
   }
+
+  console.log('✓ Theme colors updated:', { baseColor, gradientSteps: gradientColors.length })
 }
 
 // Cycle through gradient colors dynamically
