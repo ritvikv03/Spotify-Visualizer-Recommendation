@@ -126,10 +126,14 @@
               Now Playing
             </h3>
             <div class="flex items-center gap-4">
-              <img 
-                v-if="currentTrack.album?.images?.[0]?.url" 
-                :src="currentTrack.album.images[0].url" 
-                alt="Album art"
+              <img
+                v-if="currentTrack.album?.images?.[0]?.url"
+                :src="currentTrack.album.images[1]?.url || currentTrack.album.images[0].url"
+                :srcset="`${currentTrack.album.images[2]?.url || ''} 64w, ${currentTrack.album.images[1]?.url || ''} 300w, ${currentTrack.album.images[0]?.url || ''} 640w`"
+                sizes="96px"
+                :alt="`${currentTrack.album?.name || 'Album'} cover art - Now Playing`"
+                loading="eager"
+                decoding="async"
                 class="w-24 h-24 rounded-lg shadow-lg"
               />
               <div class="flex-1">
@@ -238,9 +242,12 @@
               <span class="text-sm font-normal text-cyan-400">({{ recommendations.length }})</span>
             </h3>
             
-            <div v-if="isLoadingRecommendations" class="text-center py-8">
-              <div class="animate-spin w-8 h-8 border-4 border-spotify-green border-t-transparent rounded-full mx-auto"></div>
-              <p class="text-gray-400 mt-4">Discovering your perfect tracks...</p>
+            <div v-if="isLoadingRecommendations" class="space-y-3">
+              <p class="text-gray-400 text-sm mb-4 flex items-center justify-center gap-2">
+                <div class="animate-spin w-4 h-4 border-2 border-spotify-green border-t-transparent rounded-full"></div>
+                Discovering your perfect tracks...
+              </p>
+              <TrackSkeleton v-for="i in 8" :key="`skeleton-${i}`" />
             </div>
 
             <div v-else-if="recommendations.length === 0" class="text-center py-8">
@@ -258,8 +265,12 @@
                 <div class="flex items-start gap-3 mb-2">
                   <img
                     v-if="track.album?.images?.[2]?.url"
-                    :src="track.album.images[2].url"
-                    alt="Album art"
+                    :src="track.album.images[2]?.url || track.album.images[0]?.url"
+                    :srcset="`${track.album.images[2]?.url || ''} 64w, ${track.album.images[1]?.url || ''} 300w, ${track.album.images[0]?.url || ''} 640w`"
+                    sizes="(max-width: 640px) 56px, 48px"
+                    :alt="`${track.album?.name || 'Album'} cover art`"
+                    loading="lazy"
+                    decoding="async"
                     class="w-14 h-14 sm:w-12 sm:h-12 rounded cursor-pointer flex-shrink-0"
                     @click="playTrack(track)"
                   />
@@ -312,6 +323,35 @@
               <span>{{ isLoadingRecommendations ? 'Finding New Gems...' : '🔄 Refresh Recommendations' }}</span>
             </button>
 
+            <div v-if="analysisComplete && recommendations.length > 0" class="flex gap-2 mt-2">
+              <button
+                @click="exportAllToPlaylist"
+                class="btn-secondary flex-1 flex items-center justify-center gap-2"
+                :disabled="isExportingPlaylist"
+              >
+                <svg v-if="!isExportingPlaylist" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+                <svg v-else class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                </svg>
+                <span class="hidden sm:inline">{{ isExportingPlaylist ? 'Saving...' : 'Export to Spotify' }}</span>
+                <span class="sm:hidden">{{ isExportingPlaylist ? 'Saving...' : 'Export' }}</span>
+              </button>
+
+              <button
+                @click="shareRecommendations"
+                class="btn-secondary px-4 flex items-center justify-center gap-2"
+                title="Share your discoveries"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                <span class="hidden sm:inline">Share</span>
+              </button>
+            </div>
+
             <button
               v-if="savedTracks.length > 0"
               @click="saveToPlaylist"
@@ -323,7 +363,7 @@
                 <polyline points="17 21 17 13 7 13 7 21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <polyline points="7 3 7 8 15 8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span>{{ isSavingPlaylist ? 'Creating Playlist...' : `Save ${savedTracks.length} ${savedTracks.length === 1 ? 'Track' : 'Tracks'} to Spotify` }}</span>
+              <span>{{ isSavingPlaylist ? 'Creating Playlist...' : `Save ${savedTracks.length} Favorite${savedTracks.length === 1 ? '' : 's'} to Spotify` }}</span>
             </button>
           </div>
         </div>
@@ -349,6 +389,7 @@ import SerendipitySlider from '../components/Discovery/SerendipitySlider.vue'
 import FeedbackButtons from '../components/Discovery/FeedbackButtons.vue'
 import DiscoveryScoreBadge from '../components/Discovery/DiscoveryScoreBadge.vue'
 import AudioSimilarityRadar from '../components/Discovery/AudioSimilarityRadar.vue'
+import TrackSkeleton from '../components/Discovery/TrackSkeleton.vue'
 import IconPalette from '../components/icons/IconPalette.vue'
 import IconAnalyze from '../components/icons/IconAnalyze.vue'
 import IconMusic from '../components/icons/IconMusic.vue'
@@ -362,6 +403,7 @@ const isAnalyzing = ref(false)
 const analysisComplete = ref(false)
 const isLoadingRecommendations = ref(false)
 const isSavingPlaylist = ref(false)
+const isExportingPlaylist = ref(false)
 const analysisError = ref(null) // Track error state
 const tasteProfile = ref(null)
 const recommendations = ref([])
@@ -811,6 +853,61 @@ const saveToPlaylist = async () => {
     alert('Error saving playlist. Check console for details.')
   } finally {
     isSavingPlaylist.value = false
+  }
+}
+
+const exportAllToPlaylist = async () => {
+  if (recommendations.value.length === 0) return
+
+  isExportingPlaylist.value = true
+
+  try {
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const playlistName = `Discovery Mix - ${date}`
+    const description = `${recommendations.value.length} AI-curated recommendations created by Spotify Discovery Studio`
+
+    // Use the helper method to create playlist and add tracks in one go
+    const playlist = await spotifyService.createPlaylistWithTracks(
+      playlistName,
+      recommendations.value,
+      description,
+      false // Private by default
+    )
+
+    alert(`✅ Exported all ${recommendations.value.length} recommendations to "${playlistName}"!\n\nOpen Spotify to listen to your personalized mix!`)
+  } catch (error) {
+    console.error('Error exporting playlist:', error)
+    alert(`❌ Error creating playlist: ${error.message}\n\nPlease try again or check the console for details.`)
+  } finally {
+    isExportingPlaylist.value = false
+  }
+}
+
+const shareRecommendations = async () => {
+  const shareData = {
+    title: 'My Spotify Discovery Mix',
+    text: `Check out these ${recommendations.value.length} AI-curated songs I discovered with Spotify Discovery Studio!`,
+    url: window.location.href
+  }
+
+  try {
+    if (navigator.share) {
+      // Use Web Share API if available (mobile devices)
+      await navigator.share(shareData)
+      console.log('Successfully shared!')
+    } else if (navigator.clipboard) {
+      // Fallback: copy link to clipboard
+      await navigator.clipboard.writeText(window.location.href)
+      alert('🔗 Link copied to clipboard!\n\nShare it with your friends!')
+    } else {
+      // Final fallback: show link
+      prompt('Copy this link to share:', window.location.href)
+    }
+  } catch (error) {
+    // User cancelled share or error occurred
+    if (error.name !== 'AbortError') {
+      console.error('Error sharing:', error)
+    }
   }
 }
 
