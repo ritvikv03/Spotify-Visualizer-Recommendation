@@ -14,21 +14,21 @@
     />
 
     <!-- Top Control Bar -->
-    <div class="absolute top-0 left-0 right-0 z-30 p-6">
-      <div class="flex items-center justify-between">
+    <div class="absolute top-0 left-0 right-0 z-30 p-3 sm:p-6">
+      <div class="flex items-center justify-between gap-2">
         <!-- Logo -->
-        <div class="flex items-center gap-3">
-          <IconMusic :size="32" :color="themeStore.themes[themeStore.currentTheme].primary" />
-          <h1 class="text-2xl font-bold text-white">Discovery Studio</h1>
+        <div class="flex items-center gap-2">
+          <IconMusic :size="24" :sm-size="32" :color="themeStore.themes[themeStore.currentTheme].primary" />
+          <h1 class="text-lg sm:text-2xl font-bold text-white">Discovery Studio</h1>
         </div>
 
         <!-- Controls -->
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5 sm:gap-3">
           <!-- Visualization Mode Dropdown -->
           <div class="relative" ref="modeDropdownRef">
             <button
               @click="showModeMenu = !showModeMenu"
-              class="glass-btn px-4 py-2.5 flex items-center gap-2"
+              class="glass-btn px-2 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1 sm:gap-2 touch-manipulation"
             >
               <component :is="visualizerModes.find(m => m.id === currentMode).icon" :size="18" color="#FFF" />
               <span class="hidden md:inline">{{ visualizerModes.find(m => m.id === currentMode).name }}</span>
@@ -37,7 +37,7 @@
               </svg>
             </button>
 
-            <div v-if="showModeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[280px]">
+            <div v-if="showModeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[280px] max-w-[calc(100vw-2rem)]">
               <div class="px-3 py-2 border-b border-white border-opacity-10">
                 <p class="text-xs text-gray-400 font-medium">Visualization Modes</p>
               </div>
@@ -66,7 +66,7 @@
           <div class="relative" ref="themeDropdownRef">
             <button
               @click="showThemeMenu = !showThemeMenu"
-              class="glass-btn px-4 py-2.5 flex items-center gap-2"
+              class="glass-btn px-2 sm:px-4 py-2 sm:py-2.5 flex items-center gap-1 sm:gap-2 touch-manipulation"
               :style="{ borderColor: themeStore.themes[themeStore.currentTheme].primary + '40' }"
             >
               <IconPalette :size="18" />
@@ -76,7 +76,7 @@
               </svg>
             </button>
 
-            <div v-if="showThemeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[180px]">
+            <div v-if="showThemeMenu" class="absolute top-full mt-2 right-0 glass-dropdown min-w-[180px] max-w-[calc(100vw-2rem)]">
               <button
                 v-for="(theme, key) in themeStore.themes"
                 :key="key"
@@ -97,14 +97,14 @@
           <button
             @click="isAnalyzing ? stopAnalysis() : startAnalysis()"
             :disabled="isAnalyzing"
-            class="glass-btn-primary px-6 py-2.5 flex items-center gap-2"
+            class="glass-btn-primary px-3 sm:px-6 py-2 sm:py-2.5 flex items-center gap-1 sm:gap-2 touch-manipulation"
           >
             <IconAnalyze :size="18" :class="{ 'animate-spin': isAnalyzing }" />
-            <span>{{ isAnalyzing ? 'Analyzing...' : 'Analyze' }}</span>
+            <span class="text-sm sm:text-base">{{ isAnalyzing ? 'Analyzing...' : 'Analyze' }}</span>
           </button>
 
           <!-- Logout -->
-          <button @click="handleLogout" class="glass-btn px-4 py-2.5">
+          <button @click="handleLogout" class="glass-btn px-2 sm:px-4 py-2 sm:py-2.5 touch-manipulation">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
             </svg>
@@ -115,10 +115,10 @@
 
     <!-- Side Panel for Recommendations (Slide in on demand) -->
     <div
-      class="absolute right-0 top-0 bottom-0 w-96 transform transition-transform duration-300 z-40"
+      class="absolute right-0 top-0 bottom-0 w-full sm:w-96 transform transition-transform duration-300 z-40"
       :class="showSidebar ? 'translate-x-0' : 'translate-x-full'"
     >
-      <div class="h-full glass-sidebar p-6 overflow-y-auto">
+      <div class="h-full glass-sidebar p-4 sm:p-6 overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-2">
             <IconGem :size="24" :color="themeStore.themes[themeStore.currentTheme].primary" />
@@ -142,7 +142,7 @@
           <button
             @click="generatePlaylist"
             :disabled="isGeneratingPlaylist"
-            class="w-full glass-btn-primary px-4 py-3 mb-4 flex items-center justify-center gap-2"
+            class="w-full glass-btn-primary px-4 py-3.5 sm:py-3 mb-4 flex items-center justify-center gap-2 touch-manipulation active:scale-95 transition-transform text-sm sm:text-base"
           >
             <svg class="w-5 h-5" :class="{ 'animate-spin': isGeneratingPlaylist }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -159,28 +159,28 @@
             >
               <!-- Click area for playing -->
               <div class="flex items-center gap-2 mb-2">
-                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1">
+                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1 touch-manipulation active:scale-95 transition-transform">
                   <img
                     v-if="track.album?.images?.[2]?.url"
                     :src="track.album.images[2].url"
                     alt="Album art"
-                    class="w-12 h-12 rounded flex-shrink-0"
+                    class="w-14 h-14 sm:w-12 sm:h-12 rounded flex-shrink-0"
                   />
                   <div class="flex-1 min-w-0">
-                    <p class="font-semibold text-white truncate text-sm">{{ track.name }}</p>
-                    <p class="text-xs text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
+                    <p class="font-semibold text-white truncate text-sm sm:text-base">{{ track.name }}</p>
+                    <p class="text-xs sm:text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
                   </div>
-                  <div class="text-xs" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
+                  <div class="text-xs sm:text-sm font-semibold" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
                     {{ track.popularity }}%
                   </div>
                 </div>
                 <!-- Replace button -->
                 <button
                   @click="replaceTrack(track)"
-                  class="w-7 h-7 flex items-center justify-center rounded-full bg-white bg-opacity-5 hover:bg-opacity-15 transition-all text-gray-400 hover:text-red-400"
+                  class="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-white bg-opacity-5 hover:bg-opacity-15 active:bg-opacity-20 transition-all text-gray-400 hover:text-red-400 touch-manipulation flex-shrink-0"
                   title="Replace this song"
                 >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-5 h-5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                   </svg>
                 </button>
@@ -190,8 +190,8 @@
               <div class="flex items-center gap-2">
                 <button
                   @click="toggleLikeTrack(track)"
-                  class="flex-1 text-xs px-3 py-2 rounded-lg transition-all"
-                  :class="track.isLiked ? 'bg-green-500 bg-opacity-20 text-green-400' : 'bg-white bg-opacity-5 text-gray-400 hover:bg-opacity-10'"
+                  class="flex-1 text-xs sm:text-sm px-3 py-2.5 sm:py-2 rounded-lg transition-all touch-manipulation active:scale-95"
+                  :class="track.isLiked ? 'bg-green-500 bg-opacity-20 text-green-400' : 'bg-white bg-opacity-5 text-gray-400 hover:bg-opacity-10 active:bg-opacity-15'"
                 >
                   <svg class="w-4 h-4 inline mr-1" :fill="track.isLiked ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
@@ -209,7 +209,7 @@
     <button
       v-if="!showSidebar && recommendations.length > 0"
       @click="showSidebar = true"
-      class="absolute right-6 top-24 z-30 glass-btn-primary px-4 py-3 rounded-full"
+      class="absolute right-3 sm:right-6 top-20 sm:top-24 z-30 glass-btn-primary px-4 py-3 rounded-full touch-manipulation shadow-lg"
     >
       <IconGem :size="20" />
     </button>
