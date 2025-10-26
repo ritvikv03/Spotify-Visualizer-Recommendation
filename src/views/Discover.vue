@@ -262,7 +262,8 @@
                 :key="track.id"
                 class="bg-spotify-dark p-3 sm:p-4 rounded-lg hover:bg-opacity-60 active:bg-opacity-50 transition-all relative group touch-manipulation"
               >
-                <div class="flex items-start gap-3 mb-2">
+                <div class="flex items-start gap-3">
+                  <!-- Album Art -->
                   <img
                     v-if="track.album?.images?.[2]?.url"
                     :src="track.album.images[2]?.url || track.album.images[0]?.url"
@@ -274,11 +275,14 @@
                     class="w-14 h-14 sm:w-12 sm:h-12 rounded cursor-pointer flex-shrink-0"
                     @click="playTrack(track)"
                   />
+
+                  <!-- Track Info (flex-1 ensures it takes available space) -->
                   <div class="flex-1 min-w-0 cursor-pointer" @click="playTrack(track)">
                     <p class="font-semibold truncate text-sm sm:text-base">{{ track.name }}</p>
                     <p class="text-xs sm:text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
-                    <!-- Similarity/Popularity Badge -->
-                    <div class="mt-2 flex items-center gap-1.5 flex-wrap">
+
+                    <!-- Badges Container (properly aligned, no overflow) -->
+                    <div class="mt-2 flex items-center gap-1.5 flex-wrap max-w-full">
                       <span v-if="track.similarity !== undefined" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-spotify-green/20 text-spotify-green border border-spotify-green/30 whitespace-nowrap">
                         {{ Math.round(track.similarity * 100) }}% Match
                       </span>
@@ -290,8 +294,9 @@
                       </span>
                     </div>
                   </div>
-                  <div class="flex flex-col items-end gap-2">
-                    <!-- Favorite button (larger touch target for mobile) -->
+
+                  <!-- Favorite Button (flex-shrink-0 prevents squishing) -->
+                  <div class="flex-shrink-0 self-start">
                     <button
                       @click="toggleFavorite(track)"
                       class="p-2 hover:scale-110 active:scale-95 transition-transform rounded-full hover:bg-white/10"
@@ -597,7 +602,7 @@ const startAnalysis = async () => {
       {
         useMultiArmedBandit: true,
         fallbackToAll: false,
-        limit: 100, // Fetch 100, then select best 50
+        limit: 200, // Fetch 200 to ensure we have 50+ after filtering
         serendipityLevel: serendipityLevel.value,
         maxPopularity: discoveryFilters.value.maxPopularity
       }
@@ -620,6 +625,9 @@ const startAnalysis = async () => {
       .sort((a, b) => a.sort - b.sort)
       .map(({ track }) => track)
       .slice(0, 50) // Return exactly 50 recommendations
+
+    // Log final count to help debug
+    console.log(`🎵 Final recommendation count: ${recommendations.value.length} tracks`)
 
     console.log(`✅ Strategy: ${result.strategy}, Confidence: ${(recommendationConfidence.value * 100).toFixed(1)}%, ${recommendations.value.length} tracks`)
 
