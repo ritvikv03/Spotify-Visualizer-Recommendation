@@ -260,6 +260,19 @@ export default {
     }
   },
 
+  // Get artist's top tracks
+  async getArtistTopTracks(artistId, market = 'US') {
+    try {
+      const response = await spotifyApi.get(`/artists/${artistId}/top-tracks`, {
+        params: { market }
+      })
+      return response.data
+    } catch (error) {
+      console.error(`Error fetching top tracks for artist ${artistId}:`, error)
+      throw error
+    }
+  },
+
   // Get current playback state
   async getCurrentPlayback() {
     try {
