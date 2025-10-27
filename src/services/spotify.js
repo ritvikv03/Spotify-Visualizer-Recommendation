@@ -434,13 +434,32 @@ export default {
   // Check if tracks are saved in user's library
   async checkSavedTracks(trackIds) {
     try {
-      const response = await spotifyApi.get('/me/tracks/contains', {
-        params: { ids: trackIds.join(',') }
-      })
-      return response.data
+      // Spotify API limit: max 50 IDs per request
+      const BATCH_SIZE = 50
+
+      // If trackIds is under the limit, make a single request
+      if (trackIds.length <= BATCH_SIZE) {
+        const response = await spotifyApi.get('/me/tracks/contains', {
+          params: { ids: trackIds.join(',') }
+        })
+        return response.data
+      }
+
+      // Otherwise, batch the requests
+      const results = []
+      for (let i = 0; i < trackIds.length; i += BATCH_SIZE) {
+        const batch = trackIds.slice(i, i + BATCH_SIZE)
+        const response = await spotifyApi.get('/me/tracks/contains', {
+          params: { ids: batch.join(',') }
+        })
+        results.push(...response.data)
+      }
+
+      return results
     } catch (error) {
       console.error('Error checking saved tracks:', error)
-      throw error
+      // Return false for all tracks instead of throwing
+      return trackIds.map(() => false)
     }
   },
 

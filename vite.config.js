@@ -4,6 +4,22 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 export default defineConfig({
+  build: {
+    // Use esbuild for faster builds
+    minify: 'esbuild',
+    // Remove console statements in production
+    esbuild: {
+      drop: ['console', 'debugger']
+    },
+    // Code splitting for better caching
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['vue', 'vue-router', 'pinia', 'axios']
+        }
+      }
+    }
+  },
   plugins: [
     vue(),
     VitePWA({
@@ -39,10 +55,13 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // Don't intercept navigation requests
+        navigateFallback: null,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.spotify\.com\/.*/i,
             handler: 'NetworkFirst',
+            method: 'GET', // Only cache GET requests, not OPTIONS/POST
             options: {
               cacheName: 'spotify-api-cache',
               expiration: {
@@ -51,6 +70,10 @@ export default defineConfig({
               },
               cacheableResponse: {
                 statuses: [0, 200]
+              },
+              // Skip CORS preflight and authentication requests
+              matchOptions: {
+                ignoreVary: true
               }
             }
           },
