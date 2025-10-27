@@ -182,13 +182,13 @@
               class="glass-track-card p-3 rounded-lg transition-all hover:bg-opacity-15"
             >
               <!-- Click area for playing -->
-              <div class="flex items-center gap-2">
-                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1 touch-manipulation active:scale-95 transition-transform min-w-0">
+              <div class="flex items-center gap-3 mb-2.5">
+                <div @click="playTrack(track)" class="flex items-center gap-4 cursor-pointer flex-1 touch-manipulation active:scale-95 transition-transform min-w-0">
                   <img
                     v-if="track.album?.images?.[2]?.url"
                     :src="track.album.images[2].url"
                     alt="Album art"
-                    class="w-14 h-14 sm:w-12 sm:h-12 rounded flex-shrink-0"
+                    class="w-14 h-14 sm:w-12 sm:h-12 rounded flex-shrink-0 shadow-lg"
                   />
                   <div class="flex-1 min-w-0">
                     <p class="font-semibold text-white truncate text-sm sm:text-base">{{ cleanTrackName(track.name) }}</p>
@@ -475,11 +475,10 @@ const stopAnalysis = () => {
 
 const playTrack = async (track) => {
   try {
-    if (deviceId) {
-      await spotifyService.play([track.uri], deviceId)
-    } else {
-      await spotifyService.play([track.uri])
-    }
+    // Always play on user's active device (don't force web player)
+    // This prevents disconnecting from headphones/iPhone
+    await spotifyService.play([track.uri])
+
     currentTrack.value = track
     isPlaying.value = true
     if (track.id) {
@@ -487,16 +486,19 @@ const playTrack = async (track) => {
     }
   } catch (error) {
     console.error('Error playing track:', error)
+    alert('Unable to play track. Make sure you have an active Spotify device (phone, desktop app, etc.)')
   }
 }
 
 const togglePlayback = async () => {
   try {
     if (isPlaying.value) {
-      await spotifyService.pause(deviceId)
+      // Pause on user's active device
+      await spotifyService.pause()
     } else {
       if (currentTrack.value) {
-        await spotifyService.play([currentTrack.value.uri], deviceId)
+        // Resume on user's active device
+        await spotifyService.play([currentTrack.value.uri])
       }
     }
   } catch (error) {
@@ -506,7 +508,8 @@ const togglePlayback = async () => {
 
 const nextTrack = async () => {
   try {
-    await spotifyService.skipToNext(deviceId)
+    // Skip on user's active device
+    await spotifyService.skipToNext()
     setTimeout(checkCurrentPlayback, 500)
   } catch (error) {
     console.error('Error skipping to next:', error)
@@ -515,7 +518,8 @@ const nextTrack = async () => {
 
 const previousTrack = async () => {
   try {
-    await spotifyService.skipToPrevious(deviceId)
+    // Skip on user's active device
+    await spotifyService.skipToPrevious()
     setTimeout(checkCurrentPlayback, 500)
   } catch (error) {
     console.error('Error skipping to previous:', error)
