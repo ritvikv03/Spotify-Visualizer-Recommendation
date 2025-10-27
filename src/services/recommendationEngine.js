@@ -46,7 +46,7 @@ export class RecommendationEngine {
 
   /**
    * Select optimal seeds for recommendations
-   * Uses Spotify's collaborative filtering principle
+   * Uses Spotify's collaborative filtering principle with randomization for variety
    */
   static selectSeeds(tracks, artists, analysis) {
     const seeds = {
@@ -55,26 +55,41 @@ export class RecommendationEngine {
       genres: []
     }
 
+    // Add randomization to get different recommendations each time
+    const shuffleTracks = [...tracks].sort(() => Math.random() - 0.5)
+    const shuffleArtists = [...artists].sort(() => Math.random() - 0.5)
+
     // Strategy 1: Use a mix of favorite and less-played tracks (diversity)
-    const sortedByPopularity = [...tracks].sort((a, b) => b.popularity - a.popularity)
-    
-    // Pick one very popular track (anchor)
-    if (sortedByPopularity.length > 0) {
-      seeds.tracks.push(sortedByPopularity[0].id)
+    const sortedByPopularity = [...shuffleTracks].sort((a, b) => b.popularity - a.popularity)
+
+    // Pick one popular track (anchor) - randomize from top 5
+    const topTracks = sortedByPopularity.slice(0, 5)
+    if (topTracks.length > 0) {
+      seeds.tracks.push(topTracks[Math.floor(Math.random() * topTracks.length)].id)
     }
-    
-    // Pick tracks from middle range (for exploration)
-    const midRange = sortedByPopularity.slice(Math.floor(sortedByPopularity.length * 0.3), Math.floor(sortedByPopularity.length * 0.7))
+
+    // Pick tracks from middle range (for exploration) - increased range
+    const midRange = sortedByPopularity.slice(
+      Math.floor(sortedByPopularity.length * 0.2),
+      Math.floor(sortedByPopularity.length * 0.8)
+    )
     if (midRange.length > 0) {
       seeds.tracks.push(midRange[Math.floor(Math.random() * midRange.length)].id)
     }
 
-    // Strategy 2: Use top artists as seeds
-    const topArtists = artists.slice(0, 2)
-    seeds.artists = topArtists.map(a => a.id)
+    // Strategy 2: Use top artists as seeds - randomize from top 10 artists
+    const topArtists = shuffleArtists.slice(0, Math.min(10, shuffleArtists.length))
+    const selectedArtists = topArtists
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2)
+      .map(a => a.id)
+    seeds.artists = selectedArtists
 
-    // Strategy 3: Use genres from trends
-    seeds.genres = analysis.recentTrends.slice(0, 1)
+    // Strategy 3: Use genres from trends - randomize genre selection
+    const availableGenres = analysis.recentTrends.slice(0, 3)
+    if (availableGenres.length > 0) {
+      seeds.genres = [availableGenres[Math.floor(Math.random() * availableGenres.length)]]
+    }
 
     return seeds
   }
@@ -269,6 +284,7 @@ export class RecommendationEngine {
   /**
    * Generate personalized recommendations
    * Tries Spotify API first, falls back to library-based algorithm if unavailable
+   * Enhanced to fetch multiple batches for larger recommendation pool
    */
   static async generateRecommendations(spotifyService, tracks, artists, filters = {}) {
     try {
@@ -276,31 +292,63 @@ export class RecommendationEngine {
       const analysis = this.analyzeTaste(tracks, artists)
       console.log('📊 Taste analysis:', analysis)
 
-      // Step 2: Select optimal seeds
-      const seeds = this.selectSeeds(tracks, artists, analysis)
-      console.log('🌱 Seeds selected:', seeds)
-
-      // Step 3: Build recommendation parameters
-      const params = this.buildRecommendationParams(seeds, analysis, filters)
-      console.log('🎯 Recommendation params:', params)
-
-      let recommendedTracks = []
+      let allRecommendedTracks = []
+      const targetCount = filters.limit || 200
 
       try {
-        // Step 4: Try to get recommendations from Spotify API
-        const response = await spotifyService.getRecommendations(params)
+        // Strategy: Make multiple API calls with different seeds to get more variety
+        // Spotify API returns max 50 per call, so we make 4-5 calls to reach 200+ tracks
+        const numberOfBatches = Math.ceil(targetCount / 50)
+        console.log(`🎯 Fetching ${numberOfBatches} batches to reach target of ${targetCount} tracks`)
 
-        if (!response?.tracks) {
-          throw new Error('No recommendations returned from Spotify')
+        for (let i = 0; i < numberOfBatches; i++) {
+          // Step 2: Select different seeds for each batch (randomization ensures variety)
+          const seeds = this.selectSeeds(tracks, artists, analysis)
+          console.log(`🌱 Batch ${i + 1} seeds:`, seeds)
+
+          // Step 3: Build recommendation parameters
+          const params = this.buildRecommendationParams(seeds, analysis, filters)
+
+          try {
+            // Step 4: Get recommendations from Spotify API
+            const response = await spotifyService.getRecommendations(params)
+
+            if (response?.tracks) {
+              const rawTracks = response.tracks
+              const playableTracks = filterPlayableTracks(rawTracks)
+
+              console.log(`✅ Batch ${i + 1}: Got ${playableTracks.length} playable tracks from Spotify API`)
+              allRecommendedTracks.push(...playableTracks)
+            }
+          } catch (batchError) {
+            console.warn(`⚠️ Batch ${i + 1} failed, continuing with other batches...`)
+          }
+
+          // Small delay to avoid rate limiting
+          if (i < numberOfBatches - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
         }
 
-        const rawTracks = response.tracks
+        // Remove duplicates by track ID
+        const uniqueTracks = Array.from(
+          new Map(allRecommendedTracks.map(t => [t.id, t])).values()
+        )
 
-        // Filter out unplayable tracks
-        recommendedTracks = filterPlayableTracks(rawTracks)
-        logPlayabilityStats(rawTracks, recommendedTracks, 'Spotify API recommendations')
+        console.log(`✅ Total unique tracks after ${numberOfBatches} batches: ${uniqueTracks.length}`)
+        allRecommendedTracks = uniqueTracks
 
-        console.log('✅ Got recommendations from Spotify API')
+        // If we still don't have enough tracks, use fallback
+        if (allRecommendedTracks.length < 100) {
+          console.log('⚠️ Not enough tracks from API, supplementing with library-based recommendations')
+          const fallbackTracks = await this.generateFromLibrary(spotifyService, tracks, artists, analysis, filters)
+
+          // Combine and deduplicate
+          const combined = [...allRecommendedTracks, ...fallbackTracks]
+          allRecommendedTracks = Array.from(
+            new Map(combined.map(t => [t.id, t])).values()
+          )
+        }
 
       } catch (apiError) {
         // Check if it's the deprecated endpoint error (403 or 404)
@@ -310,7 +358,7 @@ export class RecommendationEngine {
 
         if (isDeprecated) {
           console.log('⚠️ Spotify recommendations endpoint unavailable, using fallback algorithm')
-          recommendedTracks = await this.generateFromLibrary(spotifyService, tracks, artists, analysis, filters)
+          allRecommendedTracks = await this.generateFromLibrary(spotifyService, tracks, artists, analysis, filters)
         } else {
           // Different error, rethrow
           throw apiError
@@ -318,13 +366,13 @@ export class RecommendationEngine {
       }
 
       // Step 5: Score and rank recommendations
-      const scored = this.scoreRecommendations(recommendedTracks, analysis)
-      console.log('⭐ Scored recommendations:', scored.length)
+      const scored = this.scoreRecommendations(allRecommendedTracks, analysis)
+      console.log(`⭐ Final scored recommendations: ${scored.length} tracks`)
 
       return {
         tracks: scored,
         analysis,
-        seeds
+        seeds: {} // Multiple seeds used
       }
     } catch (error) {
       console.error('Recommendation generation error:', error)
