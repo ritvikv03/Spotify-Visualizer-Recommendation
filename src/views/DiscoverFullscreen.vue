@@ -182,8 +182,8 @@
               class="glass-track-card p-3 rounded-lg transition-all hover:bg-opacity-15"
             >
               <!-- Click area for playing -->
-              <div class="flex items-center gap-2 mb-2">
-                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1 touch-manipulation active:scale-95 transition-transform">
+              <div class="flex items-center gap-2">
+                <div @click="playTrack(track)" class="flex items-center gap-3 cursor-pointer flex-1 touch-manipulation active:scale-95 transition-transform min-w-0">
                   <img
                     v-if="track.album?.images?.[2]?.url"
                     :src="track.album.images[2].url"
@@ -194,11 +194,11 @@
                     <p class="font-semibold text-white truncate text-sm sm:text-base">{{ cleanTrackName(track.name) }}</p>
                     <p class="text-xs sm:text-sm text-gray-400 truncate">{{ track.artists?.map(a => a.name).join(', ') }}</p>
                   </div>
-                  <div class="text-xs sm:text-sm font-semibold tabular-nums w-12 text-right" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
+                  <div class="text-xs sm:text-sm font-semibold tabular-nums flex-shrink-0 w-12 text-right" :style="{ color: themeStore.themes[themeStore.currentTheme].primary }">
                     {{ track.popularity }}%
                   </div>
                 </div>
-                <!-- Replace button -->
+                <!-- Replace button (fixed positioning) -->
                 <button
                   @click="replaceTrack(track)"
                   class="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-white bg-opacity-5 hover:bg-opacity-15 active:bg-opacity-20 transition-all text-gray-400 hover:text-red-400 touch-manipulation flex-shrink-0"
@@ -417,7 +417,7 @@ const startAnalysis = async () => {
       spotifyService,
       uniqueTracks,
       uniqueArtists,
-      { maxPopularity: 100 }
+      { maxPopularity: 100, limit: 200 } // Fetch 200 to ensure 50+ after filtering
     )
 
     console.log('✓ Generated recommendations:', {
@@ -446,16 +446,19 @@ const startAnalysis = async () => {
     // Store all tracks for refresh functionality
     allAvailableTracks.value = sortedTracks
 
-    // Split into displayed recommendations (first 20) and replacement pool (rest)
-    recommendations.value = sortedTracks.slice(0, 20)
-    replacementTracks.value = sortedTracks.slice(20)
+    // Split into displayed recommendations (first 50) and replacement pool (rest)
+    recommendations.value = sortedTracks.slice(0, 50)
+    replacementTracks.value = sortedTracks.slice(50)
 
     console.log('✓ Recommendations split:', {
       displayed: recommendations.value.length,
       replacementPool: replacementTracks.value.length,
       total: allAvailableTracks.value.length,
-      availableForRefresh: allAvailableTracks.value.length - 20
+      availableForRefresh: allAvailableTracks.value.length - 50
     })
+
+    // Log final count for debugging
+    console.log(`🎵 Final recommendation count: ${recommendations.value.length} tracks`)
 
     showSidebar.value = true
   } catch (error) {
@@ -593,14 +596,14 @@ const refreshRecommendations = async () => {
     // Filter available tracks to exclude currently displayed ones
     const availableForRefresh = allAvailableTracks.value.filter(t => !currentTrackIds.has(t.id))
 
-    if (availableForRefresh.length < 20) {
+    if (availableForRefresh.length < 50) {
       console.warn('Not enough new tracks available. Refreshing with all available tracks.')
       // If we don't have enough unique tracks, just rotate from the beginning
-      recommendations.value = allAvailableTracks.value.slice(20, 40)
-      replacementTracks.value = allAvailableTracks.value.slice(40).concat(allAvailableTracks.value.slice(0, 20))
+      recommendations.value = allAvailableTracks.value.slice(50, 100)
+      replacementTracks.value = allAvailableTracks.value.slice(100).concat(allAvailableTracks.value.slice(0, 50))
     } else {
-      // Get next 20 tracks from the available pool
-      const newRecommendations = availableForRefresh.slice(0, 20)
+      // Get next 50 tracks from the available pool
+      const newRecommendations = availableForRefresh.slice(0, 50)
 
       // Check liked status for new recommendations
       try {
@@ -620,13 +623,16 @@ const refreshRecommendations = async () => {
       recommendations.value = newRecommendations
 
       // Update replacement pool (everything except what's displayed)
-      replacementTracks.value = availableForRefresh.slice(20)
+      replacementTracks.value = availableForRefresh.slice(50)
 
       console.log('🔄 Refreshed recommendations:', {
         displayed: recommendations.value.length,
         replacementPool: replacementTracks.value.length,
         total: allAvailableTracks.value.length
       })
+
+      // Log final count for debugging
+      console.log(`🎵 Final recommendation count after refresh: ${recommendations.value.length} tracks`)
     }
   } catch (error) {
     console.error('Error refreshing recommendations:', error)
