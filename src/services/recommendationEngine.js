@@ -206,28 +206,8 @@ export class RecommendationEngine {
         }
       }
 
-      // Try related artists too
-      const relatedArtistSamples = artists.slice(0, 10)
-      for (const artist of relatedArtistSamples) {
-        try {
-          const related = await spotifyService.getRelatedArtists(artist.id)
-          if (related && related.artists) {
-            const relatedArtists = related.artists.slice(0, 8)
-            for (const relatedArtist of relatedArtists) {
-              try {
-                const topTracks = await spotifyService.getArtistTopTracks(relatedArtist.id)
-                if (topTracks && topTracks.tracks) {
-                  allRecommendations.push(...topTracks.tracks.slice(0, 5))
-                }
-              } catch (e) {
-                // Silently skip
-              }
-            }
-          }
-        } catch (error) {
-          console.warn(`Failed to get related artists for ${artist.id}:`, error.message)
-        }
-      }
+      // Skip related artists - endpoint is deprecated (returns 404)
+      console.log('ℹ️ Skipping related artists (endpoint deprecated)')
     }
 
     // Strategy 3: Search-based discovery (works even when artist endpoints are deprecated)
