@@ -163,21 +163,39 @@ export class RecommendationEngine {
   /**
    * Fallback: Generate recommendations from user's library
    * Used when Spotify recommendations endpoint is unavailable
+   * Uses search API and user's library - NO deprecated endpoints
    */
   static async generateFromLibrary(spotifyService, tracks, artists, analysis, filters = {}) {
-    console.log('🔄 Using fallback: generating recommendations from user library and artist top tracks')
+    console.log('🔄 Using fallback: generating recommendations from search and user library')
 
     const maxPopularity = filters.maxPopularity || 100
-    const targetCount = 300 // Generate 300 tracks for huge pool (20 displayed + 280 for refresh/replace)
+    const targetCount = 300 // Generate 300 tracks for huge pool (50 displayed + 250 for refresh/replace)
 
-    try {
-      let allRecommendations = []
+    let allRecommendations = []
 
-      // Strategy 1: Get top tracks from user's favorite artists
-      const topArtists = artists.slice(0, 30) // Get more artists for massive variety (was 20, now 30)
-      console.log(`🎤 Fetching top tracks from ${topArtists.length} artists...`)
+    // Strategy 1: Try artist-based endpoints (might work for some apps)
+    let artistEndpointsWorking = false
+    const topArtists = artists.slice(0, 5) // Try with just 5 artists first
 
-      for (const artist of topArtists) {
+    console.log(`🎤 Attempting to fetch tracks from ${topArtists.length} artists...`)
+    for (const artist of topArtists) {
+      try {
+        const artistTopTracks = await spotifyService.getArtistTopTracks(artist.id)
+        if (artistTopTracks && artistTopTracks.tracks) {
+          allRecommendations.push(...artistTopTracks.tracks)
+          artistEndpointsWorking = true
+        }
+      } catch (error) {
+        // Endpoint likely deprecated - will use search fallback
+        break
+      }
+    }
+
+    // Strategy 2: If artist endpoints work, get more
+    if (artistEndpointsWorking) {
+      console.log('✅ Artist endpoints working - fetching more tracks')
+      const moreArtists = artists.slice(5, 30)
+      for (const artist of moreArtists) {
         try {
           const artistTopTracks = await spotifyService.getArtistTopTracks(artist.id)
           if (artistTopTracks && artistTopTracks.tracks) {
@@ -188,22 +206,21 @@ export class RecommendationEngine {
         }
       }
 
-      // Strategy 2: Get related artists' top tracks for discovery
-      const relatedArtistSamples = artists.slice(0, 10) // Sample from top 10 artists (was 5, now 10)
+      // Try related artists too
+      const relatedArtistSamples = artists.slice(0, 10)
       for (const artist of relatedArtistSamples) {
         try {
           const related = await spotifyService.getRelatedArtists(artist.id)
           if (related && related.artists) {
-            // Get top tracks from first 8 related artists (was 5, now 8)
             const relatedArtists = related.artists.slice(0, 8)
             for (const relatedArtist of relatedArtists) {
               try {
                 const topTracks = await spotifyService.getArtistTopTracks(relatedArtist.id)
                 if (topTracks && topTracks.tracks) {
-                  allRecommendations.push(...topTracks.tracks.slice(0, 5)) // Top 5 from each (was 3, now 5)
+                  allRecommendations.push(...topTracks.tracks.slice(0, 5))
                 }
               } catch (e) {
-                // Silently skip failed related artists
+                // Silently skip
               }
             }
           }
@@ -211,74 +228,120 @@ export class RecommendationEngine {
           console.warn(`Failed to get related artists for ${artist.id}:`, error.message)
         }
       }
+    }
 
-      // Strategy 3: Add user's saved tracks
-      try {
-        const savedTracksData = await spotifyService.getSavedTracks(50)
-        const savedTracks = savedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
-        allRecommendations.push(...savedTracks)
+    // Strategy 3: Search-based discovery (works even when artist endpoints are deprecated)
+    if (!artistEndpointsWorking || allRecommendations.length < 100) {
+      console.log('🔍 Using search-based discovery (artist endpoints unavailable or insufficient)')
 
-        // Get more saved tracks for larger pool
-        const moreSavedTracksData = await spotifyService.getSavedTracks(50, 50) // Offset 50
-        const moreSavedTracks = moreSavedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
-        allRecommendations.push(...moreSavedTracks)
-      } catch (error) {
-        console.warn('Failed to get saved tracks:', error.message)
+      // 3a. Search by top genres
+      const topGenres = analysis.recentTrends.slice(0, 10) // Top 10 genres
+      console.log(`🎵 Searching for tracks in genres:`, topGenres)
+
+      for (const genre of topGenres) {
+        try {
+          // Search for tracks in this genre (limit 50 per genre = 500 tracks potential)
+          const searchResult = await spotifyService.searchTracks(`genre:"${genre}"`, 50)
+          if (searchResult?.tracks?.items) {
+            const genreTracks = searchResult.tracks.items.filter(t => t && !t.is_local)
+            allRecommendations.push(...genreTracks)
+            console.log(`  ✓ Found ${genreTracks.length} tracks for genre "${genre}"`)
+          }
+        } catch (error) {
+          console.warn(`Search failed for genre "${genre}":`, error.message)
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
 
-      // Filter out unplayable tracks
-      const playableTracks = filterPlayableTracks(allRecommendations)
-      logPlayabilityStats(allRecommendations, playableTracks, 'library-based recommendations')
+      // 3b. Search by artist names directly
+      const topArtistNames = artists.slice(0, 20).map(a => a.name)
+      console.log(`🎤 Searching tracks by ${topArtistNames.length} artist names...`)
 
-      // Deduplicate and filter by popularity
-      const uniqueTracks = Array.from(
-        new Map(playableTracks.filter(t => t && t.id).map(t => [t.id, t])).values()
-      )
-
-      // Filter by max popularity limit
-      const filteredByPopularity = uniqueTracks.filter(t =>
-        t.popularity <= maxPopularity
-      )
-
-      console.log(`📊 Found ${filteredByPopularity.length} unique tracks within popularity range (≤${maxPopularity}%)`)
-
-      // Don't filter out user's top tracks - include everything for variety
-      // (Users might want to rediscover their own tracks in new contexts)
-      const allAvailable = filteredByPopularity
-
-      // Randomize order for variety on each visit
-      const shuffled = allAvailable.sort(() => Math.random() - 0.5)
-
-      // Sort by popularity descending (most popular first) for quality
-      const sortedTracks = shuffled.sort((a, b) => b.popularity - a.popularity)
-
-      // Take target count
-      const recommendations = sortedTracks.slice(0, targetCount)
-
-      console.log(`✅ Generated ${recommendations.length} recommendations from library (max ${maxPopularity}% popularity, target ${targetCount})`)
-
-      return recommendations
-
-    } catch (error) {
-      console.error('❌ Fallback recommendation error:', error)
-      // Last resort: return artist top tracks
-      const fallbackTracks = []
-      for (const artist of artists.slice(0, 5)) {
+      for (const artistName of topArtistNames) {
         try {
-          const topTracks = await spotifyService.getArtistTopTracks(artist.id)
-          if (topTracks && topTracks.tracks) {
-            fallbackTracks.push(...topTracks.tracks)
+          // Search for tracks by this artist
+          const searchResult = await spotifyService.searchTracks(`artist:"${artistName}"`, 20)
+          if (searchResult?.tracks?.items) {
+            const artistTracks = searchResult.tracks.items.filter(t => t && !t.is_local)
+            allRecommendations.push(...artistTracks)
           }
-        } catch (e) {
-          // Skip failed artists
+        } catch (error) {
+          console.warn(`Search failed for artist "${artistName}":`, error.message)
         }
       }
 
-      return fallbackTracks
-        .filter(t => t.popularity <= maxPopularity)
-        .sort((a, b) => b.popularity - a.popularity)
-        .slice(0, targetCount)
+      // 3c. Get user's playlists and extract tracks
+      try {
+        console.log(`📚 Fetching tracks from user's playlists...`)
+        const playlistsData = await spotifyService.getUserPlaylists(50)
+        const playlists = playlistsData?.items || []
+
+        // Get tracks from first 10 playlists
+        for (const playlist of playlists.slice(0, 10)) {
+          try {
+            const playlistTracks = await spotifyService.getPlaylistTracks(playlist.id, 100)
+            const tracks = playlistTracks?.items
+              ?.map(item => item.track)
+              .filter(t => t && !t.is_local) || []
+            allRecommendations.push(...tracks)
+            console.log(`  ✓ Got ${tracks.length} tracks from playlist "${playlist.name}"`)
+          } catch (error) {
+            console.warn(`Failed to get tracks from playlist ${playlist.id}:`, error.message)
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to get user playlists:', error.message)
+      }
     }
+
+    // Strategy 4: Always include user's saved tracks for expansion
+    try {
+      console.log(`💾 Fetching user's saved tracks...`)
+      const savedTracksData = await spotifyService.getSavedTracks(50)
+      const savedTracks = savedTracksData.items?.map(item => item.track).filter(t => t && !t.is_local) || []
+      allRecommendations.push(...savedTracks)
+      console.log(`  ✓ Got ${savedTracks.length} saved tracks`)
+    } catch (error) {
+      console.warn('Failed to get saved tracks:', error.message)
+    }
+
+    // Strategy 5: Include user's existing top tracks (passed in)
+    console.log(`🎵 Including ${tracks.length} user top tracks in pool`)
+    allRecommendations.push(...tracks)
+
+    // Filter out unplayable tracks
+    const playableTracks = filterPlayableTracks(allRecommendations)
+    logPlayabilityStats(allRecommendations, playableTracks, 'library-based recommendations')
+
+    // Deduplicate by track ID
+    const uniqueTracks = Array.from(
+      new Map(playableTracks.filter(t => t && t.id).map(t => [t.id, t])).values()
+    )
+
+    console.log(`📊 Found ${uniqueTracks.length} unique playable tracks before filtering`)
+
+    // Filter by max popularity limit
+    const filteredByPopularity = uniqueTracks.filter(t =>
+      t.popularity <= maxPopularity
+    )
+
+    console.log(`📊 After popularity filter (≤${maxPopularity}%): ${filteredByPopularity.length} tracks`)
+
+    // Randomize order for variety on each visit
+    const shuffled = filteredByPopularity.sort(() => Math.random() - 0.5)
+
+    // Take target count
+    const recommendations = shuffled.slice(0, targetCount)
+
+    console.log(`✅ Generated ${recommendations.length} recommendations (target: ${targetCount})`)
+
+    if (recommendations.length < 50) {
+      console.warn(`⚠️ Only got ${recommendations.length} tracks. Expected at least 50.`)
+    }
+
+    return recommendations
   }
 
   /**
