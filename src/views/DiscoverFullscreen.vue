@@ -241,13 +241,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import spotifyService from '../services/spotify'
 import RecommendationEngine from '../services/recommendationEngine'
-import DramaticVisualizer from '../components/Visualizer/DramaticVisualizer.vue'
+import { getCachedRecommendations, cacheRecommendations, clearExpiredCaches } from '../utils/recommendationCache'
+import { track } from '@vercel/analytics'
+// Code splitting: Load visualizer dynamically to reduce initial bundle size
+const DramaticVisualizer = defineAsyncComponent(() =>
+  import('../components/Visualizer/DramaticVisualizer.vue')
+)
 import IconPalette from '../components/icons/IconPalette.vue'
 import IconAnalyze from '../components/icons/IconAnalyze.vue'
 import IconMusic from '../components/icons/IconMusic.vue'
@@ -290,6 +295,8 @@ onMounted(() => {
   loadSpotifyPlayer()
   checkCurrentPlayback()
   themeStore.loadSavedTheme()
+  // Clean up expired caches on mount
+  clearExpiredCaches()
 
   // Close dropdowns when clicking outside
   document.addEventListener('click', handleClickOutside)
@@ -366,37 +373,95 @@ const checkCurrentPlayback = async () => {
   }
 }
 
-const startAnalysis = async () => {
+const startAnalysis = async (forceRefresh = false) => {
   if (isAnalyzing.value) return
 
   isAnalyzing.value = true
 
   try {
-    let allTracks = []
-    let allArtists = []
+    // Try to load from cache first (unless force refresh)
+    if (!forceRefresh) {
+      const userId = authStore.user?.id || 'default'
+      const cached = await getCachedRecommendations(userId)
 
-    for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
-      if (allTracks.length >= 30) break
-      try {
-        const topTracks = await spotifyService.getUserTopTracks(timeRange, 30)
-        if (topTracks?.items?.length > 0) {
-          allTracks = [...allTracks, ...topTracks.items.filter(t => !t.is_local)]
-          break
+      if (cached) {
+        console.log('💾 Using cached recommendations')
+        allAvailableTracks.value = cached.recommendations
+        recommendations.value = cached.recommendations.slice(0, 50)
+        replacementTracks.value = cached.recommendations.slice(50)
+
+        // Check liked status for displayed tracks (may have changed)
+        try {
+          const trackIds = recommendations.value.map(t => t.id)
+          const likedStatus = await spotifyService.checkSavedTracks(trackIds)
+          recommendations.value.forEach((track, index) => {
+            track.isLiked = likedStatus[index] || false
+          })
+        } catch (error) {
+          console.error('Error checking liked status:', error)
         }
-      } catch (error) {
-        console.log(`${timeRange} unavailable`)
+
+        // Track analytics
+        track('recommendations_loaded', {
+          source: 'cache',
+          count: recommendations.value.length,
+          poolSize: allAvailableTracks.value.length
+        })
+
+        showSidebar.value = true
+        isAnalyzing.value = false
+        console.log(`🎵 Loaded ${recommendations.value.length} tracks from cache`)
+        return
       }
     }
 
-    for (const timeRange of ['long_term', 'medium_term']) {
-      if (allArtists.length >= 20) break
+    console.log('🔄 Generating fresh recommendations...')
+    let allTracks = []
+    let allArtists = []
+
+    // Fetch top tracks from ALL time ranges (not just one)
+    console.log('🔍 Fetching top tracks from all time ranges...')
+    for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
       try {
-        const topArtists = await spotifyService.getUserTopArtists(timeRange, 20)
-        if (topArtists?.items?.length > 0) {
-          allArtists = [...allArtists, ...topArtists.items]
+        const topTracks = await spotifyService.getUserTopTracks(timeRange, 50)
+        if (topTracks?.items?.length > 0) {
+          console.log(`  ✓ ${timeRange}: ${topTracks.items.length} tracks`)
+          allTracks = [...allTracks, ...topTracks.items.filter(t => !t.is_local)]
+          // DON'T break - we want ALL time ranges for maximum variety
         }
       } catch (error) {
-        // Silent fail
+        console.log(`  ✗ ${timeRange} unavailable:`, error.message)
+      }
+    }
+
+    // Fetch top artists from ALL time ranges
+    console.log('🔍 Fetching top artists from all time ranges...')
+    for (const timeRange of ['long_term', 'medium_term', 'short_term']) {
+      try {
+        const topArtists = await spotifyService.getUserTopArtists(timeRange, 50)
+        if (topArtists?.items?.length > 0) {
+          console.log(`  ✓ ${timeRange}: ${topArtists.items.length} artists`)
+          allArtists = [...allArtists, ...topArtists.items]
+          // DON'T break - we want ALL time ranges
+        }
+      } catch (error) {
+        console.log(`  ✗ ${timeRange} unavailable:`, error.message)
+      }
+    }
+
+    // If still no data, try recently played as last resort
+    if (allTracks.length === 0) {
+      console.log('⚠️ No top tracks found, trying recently played...')
+      try {
+        const recentlyPlayed = await spotifyService.getRecentlyPlayed(50)
+        if (recentlyPlayed?.items?.length > 0) {
+          allTracks = recentlyPlayed.items
+            .map(item => item.track)
+            .filter(t => t && !t.is_local)
+          console.log(`  ✓ Recently played: ${allTracks.length} tracks`)
+        }
+      } catch (error) {
+        console.log('  ✗ Recently played unavailable:', error.message)
       }
     }
 
@@ -408,11 +473,19 @@ const startAnalysis = async () => {
       new Map(allArtists.filter(a => a && a.id).map(a => [a.id, a])).values()
     )
 
+    console.log('📊 Collected listening data:', {
+      totalTracks: allTracks.length,
+      uniqueTracks: uniqueTracks.length,
+      totalArtists: allArtists.length,
+      uniqueArtists: uniqueArtists.length
+    })
+
     if (uniqueTracks.length === 0) {
-      alert('No music data found! Play some songs on Spotify first.')
+      alert('No music data found! Please play some songs on Spotify first, then try again.')
       return
     }
 
+    console.log('🎯 Generating recommendations with multi-batch strategy...')
     const result = await RecommendationEngine.generateRecommendations(
       spotifyService,
       uniqueTracks,
@@ -425,6 +498,10 @@ const startAnalysis = async () => {
       maxPopularity: 100,
       avgPopularity: Math.round(result.tracks.reduce((sum, t) => sum + t.popularity, 0) / result.tracks.length)
     })
+
+    if (result.tracks.length < 50) {
+      console.warn('⚠️ Only got', result.tracks.length, 'tracks. Expected at least 50.')
+    }
 
     // Sort recommendations by popularity in descending order (most popular first)
     const sortedTracks = result.tracks.sort((a, b) => b.popularity - a.popularity)
@@ -457,8 +534,26 @@ const startAnalysis = async () => {
       availableForRefresh: allAvailableTracks.value.length - 50
     })
 
+    // Cache recommendations for future use
+    const userId = authStore.user?.id || 'default'
+    await cacheRecommendations(userId, sortedTracks, {
+      generatedAt: new Date().toISOString(),
+      trackCount: uniqueTracks.length,
+      artistCount: uniqueArtists.length
+    })
+
+    // Track analytics
+    track('recommendations_loaded', {
+      source: 'api',
+      count: recommendations.value.length,
+      poolSize: allAvailableTracks.value.length,
+      userTracks: uniqueTracks.length,
+      userArtists: uniqueArtists.length
+    })
+
     // Log final count for debugging
     console.log(`🎵 Final recommendation count: ${recommendations.value.length} tracks`)
+    console.log(`🔄 Refresh pool size: ${replacementTracks.value.length} tracks`)
 
     showSidebar.value = true
   } catch (error) {
@@ -484,6 +579,13 @@ const playTrack = async (track) => {
     if (track.id) {
       loadAudioFeatures(track.id)
     }
+
+    // Track analytics
+    track('play_track', {
+      trackName: track.name,
+      popularity: track.popularity,
+      artists: track.artists?.map(a => a.name).join(', ')
+    })
   } catch (error) {
     console.error('Error playing track:', error)
     alert('Unable to play track. Make sure you have an active Spotify device (phone, desktop app, etc.)')
@@ -536,9 +638,18 @@ const toggleLikeTrack = async (track) => {
     if (track.isLiked) {
       await spotifyService.removeTrack(track.id)
       track.isLiked = false
+      track('unlike_track', {
+        trackName: track.name,
+        popularity: track.popularity
+      })
     } else {
       await spotifyService.saveTrack(track.id)
       track.isLiked = true
+      track('like_track', {
+        trackName: track.name,
+        popularity: track.popularity,
+        discoveryScore: track.discoveryScore || 0
+      })
     }
   } catch (error) {
     console.error('Error toggling like:', error)
@@ -590,6 +701,7 @@ const refreshRecommendations = async () => {
   // Check if we have enough tracks to refresh
   if (allAvailableTracks.value.length < 40) {
     console.warn('Not enough tracks to refresh. Run Analyze again for more recommendations.')
+    alert('Not enough tracks in the pool. Please run "Analyze My Taste" again to generate more recommendations.')
     return
   }
 
@@ -598,48 +710,65 @@ const refreshRecommendations = async () => {
     const currentTrackIds = new Set(recommendations.value.map(t => t.id))
 
     // Filter available tracks to exclude currently displayed ones
-    const availableForRefresh = allAvailableTracks.value.filter(t => !currentTrackIds.has(t.id))
+    let availableForRefresh = allAvailableTracks.value.filter(t => !currentTrackIds.has(t.id))
+
+    console.log(`🔄 Refresh: ${availableForRefresh.length} tracks available (excluding ${currentTrackIds.size} currently displayed)`)
 
     if (availableForRefresh.length < 50) {
-      console.warn('Not enough new tracks available. Refreshing with all available tracks.')
-      // If we don't have enough unique tracks, just rotate from the beginning
-      recommendations.value = allAvailableTracks.value.slice(50, 100)
-      replacementTracks.value = allAvailableTracks.value.slice(100).concat(allAvailableTracks.value.slice(0, 50))
+      console.warn('Not enough new tracks available. Shuffling all tracks for variety.')
+      // Shuffle all available tracks for maximum variety
+      availableForRefresh = [...allAvailableTracks.value].sort(() => Math.random() - 0.5)
     } else {
-      // Get next 50 tracks from the available pool
-      const newRecommendations = availableForRefresh.slice(0, 50)
-
-      // Check liked status for new recommendations
-      try {
-        const trackIds = newRecommendations.map(t => t.id)
-        const likedStatus = await spotifyService.checkSavedTracks(trackIds)
-        newRecommendations.forEach((track, index) => {
-          track.isLiked = likedStatus[index] || false
-        })
-      } catch (error) {
-        console.error('Error checking liked status:', error)
-        newRecommendations.forEach(track => {
-          track.isLiked = false
-        })
-      }
-
-      // Update displayed recommendations
-      recommendations.value = newRecommendations
-
-      // Update replacement pool (everything except what's displayed)
-      replacementTracks.value = availableForRefresh.slice(50)
-
-      console.log('🔄 Refreshed recommendations:', {
-        displayed: recommendations.value.length,
-        replacementPool: replacementTracks.value.length,
-        total: allAvailableTracks.value.length
-      })
-
-      // Log final count for debugging
-      console.log(`🎵 Final recommendation count after refresh: ${recommendations.value.length} tracks`)
+      // Shuffle available tracks to get random selection (not just next sequential 50)
+      availableForRefresh = [...availableForRefresh].sort(() => Math.random() - 0.5)
     }
+
+    // Get 50 random tracks from the shuffled pool
+    const newRecommendations = availableForRefresh.slice(0, 50)
+
+    // Check liked status for new recommendations
+    try {
+      const trackIds = newRecommendations.map(t => t.id)
+      const likedStatus = await spotifyService.checkSavedTracks(trackIds)
+      newRecommendations.forEach((track, index) => {
+        track.isLiked = likedStatus[index] || false
+      })
+    } catch (error) {
+      console.error('Error checking liked status:', error)
+      newRecommendations.forEach(track => {
+        track.isLiked = false
+      })
+    }
+
+    // Update displayed recommendations
+    recommendations.value = newRecommendations
+
+    // Update replacement pool (everything except what's displayed)
+    const newDisplayedIds = new Set(newRecommendations.map(t => t.id))
+    replacementTracks.value = allAvailableTracks.value.filter(t => !newDisplayedIds.has(t.id))
+
+    const refreshMethod = availableForRefresh.length < 50 ? 'shuffled_all' : 'shuffled_available'
+
+    console.log('🔄 Refreshed recommendations:', {
+      displayed: recommendations.value.length,
+      replacementPool: replacementTracks.value.length,
+      total: allAvailableTracks.value.length,
+      method: refreshMethod
+    })
+
+    // Track analytics
+    track('refresh_recommendations', {
+      count: recommendations.value.length,
+      method: refreshMethod,
+      poolSize: allAvailableTracks.value.length
+    })
+
+    // Log final count for debugging
+    console.log(`🎵 Final recommendation count after refresh: ${recommendations.value.length} tracks`)
+    console.log(`✨ Tracks are now randomized for variety!`)
   } catch (error) {
     console.error('Error refreshing recommendations:', error)
+    alert('Failed to refresh recommendations. Please try again.')
   }
 }
 
@@ -667,6 +796,12 @@ const generatePlaylist = async () => {
     // Add tracks to playlist
     const trackUris = recommendations.value.map(track => track.uri)
     await spotifyService.addTracksToPlaylist(playlist.id, trackUris)
+
+    // Track analytics
+    track('generate_playlist', {
+      trackCount: recommendations.value.length,
+      playlistName
+    })
 
     alert(`Playlist "${playlistName}" created successfully with ${recommendations.value.length} tracks!`)
   } catch (error) {
