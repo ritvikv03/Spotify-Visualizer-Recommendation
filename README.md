@@ -7,46 +7,6 @@ A revolutionary music discovery platform combining cutting-edge 3D visualization
 ![TensorFlow](https://img.shields.io/badge/TensorFlow.js-4.x-orange.svg)
 ![Three.js](https://img.shields.io/badge/Three.js-0.160-purple.svg)
 
-## ✨ Key Features
-
-### 🧠 Advanced ML Recommendations
-- **Audio DNA Matching**: Genre-agnostic similarity based on 10 audio features
-- **Zero Popularity Bias**: Discovers tracks with <60% popularity
-- **Multi-Algorithm System**: Combines 5 strategies via multi-armed bandit
-- **YouTube Music-Inspired**: Contextual, time-aware, and mood-aware recommendations
-- **Multi-Armed Bandit**: Thompson Sampling algorithm automatically selects best strategy
-- **Continuous Learning**: Improves from every like, dislike, play, and skip
-- **Explainable AI**: Shows exactly why each track was recommended
-- **100% Playable**: Comprehensive filtering ensures all recommendations can be played
-
-### 🎨 Stunning 3D Visualizations
-- **14 Visualization Modes** including:
-  - Fractal Soundscape (recursive geometric patterns)
-  - Emotional Spectrum Sphere (3D emotion mapping)
-  - Time-Travel Waveform (4D listening history)
-  - Galaxy, DNA Helix, Quantum Field, and more
-- **Audio-Reactive**: Real-time response to music
-- **GPU-Optimized**: Smooth 60 FPS even with thousands of objects
-- **VR-Ready**: WebXR support for immersive experiences
-
-### 🎯 Discovery Features
-- **Serendipity Slider**: Control exploration vs exploitation (0-100%)
-- **Discovery Score**: See how undiscovered each track is (💎 Hidden Gem → 🎵 Known)
-- **Audio Similarity Radar**: Visual breakdown of why tracks match your taste
-- **Connection Graph**: D3.js force-directed graph showing audio DNA relationships
-- **Learning Dashboard**: Insights into your learned preferences
-- **Smart Queue Generation**: Intelligent play queues with smooth transitions
-- **Personalized Mixes**: Discovery, mood, genre, artist, and decade mixes
-
-### 🎓 Intelligent Learning
-- **Feedback System**: Like/dislike buttons that teach the AI
-- **Multi-Armed Bandit**: Automatically optimizes strategy selection based on your feedback
-- **Listening Pattern Mining**: Time-decay weighted analysis
-- **Contextual Awareness**: Adapts to time of day (morning/afternoon/evening/night)
-- **Mood Detection**: Automatically infers mood from context and listening patterns
-- **Session Tracking**: Records listening sessions with temporal context
-- **Preference Evolution**: Tracks how your taste changes over time
-- **IndexedDB Storage**: Persistent learning across sessions
 
 ## 🚀 Quick Start
 
