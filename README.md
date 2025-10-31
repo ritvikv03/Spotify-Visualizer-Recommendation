@@ -440,7 +440,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-**Ritvik Vankayalapati** - [@ritvikv03](https://github.com/ritvikv03)
+**Ritvik Vasikarla** - [@ritvikv03](https://github.com/ritvikv03)
 
 Project Link: [https://github.com/ritvikv03/Spotify-Visualizer-Recommendation](https://github.com/ritvikv03/Spotify-Visualizer-Recommendation)
 
