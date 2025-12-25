@@ -19,7 +19,7 @@
 ## 🎯 Business Problem & Solution
 
 ### The Problem
-Current music recommendation systems suffer from popularity bias, creating echo chambers where mainstream tracks dominate discovery. Independent artists with <10K monthly listeners remain invisible, despite potential audio compatibility with user preferences. This represents a **$4.5B market inefficiency** in the streaming industry.
+Current music recommendation systems suffer from popularity bias, creating echo chambers where mainstream tracks dominate discovery. Low-popularity artists (Spotify popularity score <30) remain invisible in algorithmic recommendations, despite potential audio compatibility with user preferences. This represents a **$4.5B market inefficiency** in the streaming industry where deserving artists can't reach their ideal audience.
 
 ### Our Solution
 A privacy-first music discovery platform that:
@@ -30,10 +30,10 @@ A privacy-first music discovery platform that:
 - **Respects privacy** with 100% client-side processing—no data leaves the user's browser
 
 ### Impact Metrics
-- **50-70% recommendation coverage** from artists with <50K followers (vs. Spotify's ~15%)
-- **Sub-2s recommendation latency** despite TensorFlow.js neural network inference
-- **90+ Lighthouse performance score** with PWA capabilities for offline discovery
-- **Zero data collection**—all ML training occurs locally in IndexedDB
+- **50-70% recommendation coverage** from low-popularity artists (popularity score <50) vs. Spotify's mainstream bias
+- **Optimized recommendation performance** with TensorFlow.js neural network inference running client-side
+- **Production-ready PWA** with offline capabilities and intelligent caching strategies
+- **Zero data collection**—all ML training occurs locally in IndexedDB with complete privacy
 
 ---
 
@@ -41,14 +41,14 @@ A privacy-first music discovery platform that:
 
 ### 🧠 Intelligent Recommendation System
 - **Multi-Engine Architecture**: Orchestrates 4+ recommendation strategies (collaborative filtering, content-based, contextual bandits, exploratory sampling)
-- **TensorFlow.js Neural Networks**: Analyzes 11 audio features (danceability, energy, valence, acousticness, etc.) to compute similarity scores
-- **Adaptive Learning**: Multi-armed bandit algorithm dynamically selects best-performing strategy based on user feedback
+- **TensorFlow.js Neural Networks**: Analyzes 10 audio features (energy, valence, danceability, acousticness, instrumentalness, liveness, speechiness, tempo, loudness, key) using neural networks for similarity scoring
+- **Adaptive Learning**: Multi-armed bandit algorithm (Thompson Sampling) dynamically selects best-performing strategy based on user feedback
 - **Graceful Degradation**: Automatic fallback chain when Spotify API endpoints fail (handles 403/404 gracefully)
 
 ### 📊 Data Visualization Suite
 - **Audio Similarity Radar**: D3.js-powered radar charts comparing track features against user taste profile
 - **Connection Graph**: Force-directed, radial, and hierarchical visualizations of track relationships using D3.js
-- **Discovery Score Badges**: Classifies tracks as "Hidden Gem" (<10K monthly listeners), "Undiscovered" (<50K), "Emerging" (<100K)
+- **Discovery Score Badges**: Classifies tracks using algorithmic discovery score based on Spotify popularity and recency: "Hidden Gem" (score ≥80), "Undiscovered" (≥60), "Emerging" (≥40)
 - **Learning Dashboard**: Real-time analytics showing user's "Musical DNA" with exploration metrics and listening patterns
 
 ### 🎨 3D Audio Visualizers
@@ -116,7 +116,7 @@ A privacy-first music discovery platform that:
 | **Build Tool** | Vite 5.2 | 10x faster HMR than Webpack, native ESM support, optimized production builds |
 | **State Management** | Pinia 2.1 | Type-safe stores, Vue 3 optimized, better DevTools integration than Vuex |
 | **Styling** | Tailwind CSS 3.4 | Utility-first CSS reduces bundle size, purges unused styles (15KB final CSS) |
-| **Machine Learning** | TensorFlow.js 4.22 | Browser-compatible neural networks, WASM acceleration, 70ms inference latency |
+| **Machine Learning** | TensorFlow.js 4.22 | Browser-compatible neural networks, WASM acceleration, optimized for client-side inference |
 | **3D Graphics** | Three.js 0.160 | Industry-standard WebGL abstraction, extensive documentation, active ecosystem |
 | **Audio Processing** | Tone.js 14.7 | Precise audio timing, built-in analyzers, Web Audio API wrapper |
 | **Data Viz** | D3.js 7.9 | Declarative data binding, flexible layouts for graphs/radars |
@@ -147,20 +147,20 @@ A privacy-first music discovery platform that:
 
 ---
 
-## 🚀 Performance Metrics
+## 🚀 Performance Optimizations
 
-### Web Vitals (Lighthouse Score: 94/100)
-- **First Contentful Paint**: 0.8s
-- **Largest Contentful Paint**: 1.2s
-- **Time to Interactive**: 1.9s
-- **Cumulative Layout Shift**: 0.02
-- **Total Bundle Size**: 487KB gzipped (1.2MB uncompressed)
+### Production Optimizations
+- **Code Splitting**: Vendor bundle separation for optimal caching
+- **Lazy Loading**: Three.js and TensorFlow.js loaded on-demand
+- **Service Worker Caching**: NetworkFirst for APIs (5min cache), CacheFirst for images (24hr cache)
+- **Bundle Size**: Optimized production build with tree-shaking and minification
+- **Memory Management**: Proper Three.js scene disposal prevents memory leaks
 
-### Runtime Performance
-- **Recommendation Generation**: <2s (including TensorFlow.js inference)
-- **Visualizer Frame Rate**: 60 FPS (tested on M1/M2 Macs, falls to 45 FPS on older devices)
-- **Memory Usage**: ~150MB steady-state (Three.js scenes properly disposed)
-- **API Response Caching**: 85% cache hit rate after 10 recommendations
+### Performance Targets
+- **Recommendation Generation**: Optimized for fast client-side processing
+- **Visualizer Frame Rate**: Targets 60 FPS on modern devices with dynamic quality scaling
+- **Lighthouse Performance**: Optimized for Core Web Vitals (FCP, LCP, CLS)
+- **API Response Caching**: Intelligent caching strategy reduces redundant API calls
 
 ---
 
