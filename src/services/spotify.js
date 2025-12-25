@@ -43,17 +43,43 @@ spotifyApi.interceptors.response.use(
       }
     }
 
-    // Enhanced 403/404 error handling for deprecated endpoints
-    if (error.response?.status === 403 || error.response?.status === 404) {
+    // Enhanced error handling for 400, 403, 404 errors
+    if (error.response?.status === 400 || error.response?.status === 403 || error.response?.status === 404) {
       const statusCode = error.response?.status
       console.error(`⛔ ${statusCode} Error Detected`)
       console.error('Endpoint:', error.config?.url)
       console.error('Method:', error.config?.method?.toUpperCase())
+      console.error('Request params:', error.config?.params || 'None')
       console.error('Response body:', error.response?.data || 'Empty')
+
+      // Handle 400 Bad Request errors
+      if (statusCode === 400) {
+        console.error('📋 Common 400 Causes:')
+        console.error('1. Invalid or missing required parameters')
+        console.error('2. Parameter values out of acceptable range')
+        console.error('3. Malformed request data')
+        console.error('4. Invalid IDs (track, artist, or playlist)')
+
+        // Specific guidance for recommendations endpoint
+        if (error.config?.url?.includes('recommendations')) {
+          console.error('\n💡 Recommendations endpoint requires:')
+          console.error('- At least 1 seed (seed_artists, seed_tracks, or seed_genres)')
+          console.error('- Maximum 5 seeds total (combined)')
+          console.error('- Valid Spotify IDs (alphanumeric strings)')
+        }
+
+        // Specific guidance for audio-features endpoint
+        if (error.config?.url?.includes('audio-features')) {
+          console.error('\n💡 Audio Features endpoint requires:')
+          console.error('- Valid Spotify track IDs (comma-separated)')
+          console.error('- Maximum 100 IDs per request')
+          console.error('- IDs must be alphanumeric strings')
+        }
+      }
 
       // Check if recommendations endpoint (deprecated as of Nov 27, 2024)
       // Can return 403 OR 404 depending on app status
-      if (error.config?.url?.includes('recommendations')) {
+      if (error.config?.url?.includes('recommendations') && (statusCode === 403 || statusCode === 404)) {
         const customError = new Error('Spotify Recommendations endpoint is no longer available for new apps. Using alternative recommendation algorithm.')
         customError.isDeprecatedEndpoint = true
         customError.originalError = error
@@ -61,7 +87,7 @@ spotifyApi.interceptors.response.use(
       }
 
       // Check if audio-features endpoint (also deprecated)
-      if (error.config?.url?.includes('audio-features')) {
+      if (error.config?.url?.includes('audio-features') && (statusCode === 403 || statusCode === 404)) {
         const customError = new Error('Audio Features endpoint is no longer available. This feature has been disabled.')
         customError.isDeprecatedEndpoint = true
         customError.originalError = error
@@ -81,7 +107,10 @@ spotifyApi.interceptors.response.use(
         console.error('2. URL may be incorrect')
         console.error('3. API version mismatch')
       }
-      console.error('\n💡 Solution: Add users to your app allowlist at https://developer.spotify.com/dashboard')
+      console.error('\n💡 Solution: Check your request parameters and ensure they meet Spotify API requirements')
+      if (statusCode === 403 || statusCode === 404) {
+        console.error('💡 For 403/404: Add users to your app allowlist at https://developer.spotify.com/dashboard')
+      }
     }
 
     return Promise.reject(error)
@@ -171,32 +200,76 @@ export default {
   async getAudioFeatures(trackIds) {
     try {
       // Ensure trackIds is an array and filter out invalid IDs
-      const validIds = Array.isArray(trackIds) 
-        ? trackIds.filter(id => id && typeof id === 'string')
+      const validIds = Array.isArray(trackIds)
+        ? trackIds.filter(id => id && typeof id === 'string' && id.length > 0)
         : []
-      
+
       if (validIds.length === 0) {
         console.warn('No valid track IDs provided to getAudioFeatures')
         return { audio_features: [] }
       }
-      
+
       // Spotify API accepts max 100 IDs
       const idsToFetch = validIds.slice(0, 100)
-      
+
+      // Validate track ID format (should be alphanumeric Spotify IDs)
+      const invalidIds = idsToFetch.filter(id => !/^[a-zA-Z0-9]+$/.test(id))
+      if (invalidIds.length > 0) {
+        console.warn('Invalid track ID format detected:', invalidIds)
+        // Filter out invalid IDs
+        const cleanIds = idsToFetch.filter(id => /^[a-zA-Z0-9]+$/.test(id))
+        if (cleanIds.length === 0) {
+          console.error('No valid track IDs after filtering')
+          return { audio_features: [] }
+        }
+      }
+
+      const cleanIds = idsToFetch.filter(id => /^[a-zA-Z0-9]+$/.test(id))
+
       const response = await spotifyApi.get('/audio-features', {
-        params: { ids: idsToFetch.join(',') }
+        params: { ids: cleanIds.join(',') }
       })
       return response.data
     } catch (error) {
       console.error('Error fetching audio features:', error)
+      if (error.response?.status === 400) {
+        console.error('400 Bad Request - Invalid track IDs:', error.response?.data)
+        console.error('Attempted IDs:', trackIds)
+      }
       console.error('Response:', error.response?.data)
-      throw error
+      // Return empty result instead of throwing to allow graceful degradation
+      return { audio_features: [] }
     }
   },
 
   // Get recommendations based on seed data
   async getRecommendations(params) {
     try {
+      // Validate that at least one seed is provided (Spotify API requirement)
+      const hasSeeds = params.seed_tracks || params.seed_artists || params.seed_genres
+      if (!hasSeeds) {
+        const error = new Error('At least one seed (track, artist, or genre) is required for recommendations')
+        error.code = 'INVALID_PARAMS'
+        throw error
+      }
+
+      // Validate seed counts (max 5 total seeds combined)
+      const trackSeedCount = params.seed_tracks ? params.seed_tracks.split(',').length : 0
+      const artistSeedCount = params.seed_artists ? params.seed_artists.split(',').length : 0
+      const genreSeedCount = params.seed_genres ? params.seed_genres.split(',').length : 0
+      const totalSeeds = trackSeedCount + artistSeedCount + genreSeedCount
+
+      if (totalSeeds > 5) {
+        console.warn(`Total seeds (${totalSeeds}) exceeds Spotify limit of 5. Trimming...`)
+        // Trim to max 5 seeds total
+        if (params.seed_tracks) {
+          params.seed_tracks = params.seed_tracks.split(',').slice(0, 3).join(',')
+        }
+        if (params.seed_artists) {
+          params.seed_artists = params.seed_artists.split(',').slice(0, 2).join(',')
+        }
+      }
+
       const response = await spotifyApi.get('/recommendations', {
         params: {
           ...params,
@@ -206,6 +279,10 @@ export default {
       return response.data
     } catch (error) {
       console.error('Error fetching recommendations:', error)
+      if (error.response?.status === 400) {
+        console.error('400 Bad Request - Invalid parameters:', error.response?.data)
+        console.error('Request params:', params)
+      }
       throw error
     }
   },
