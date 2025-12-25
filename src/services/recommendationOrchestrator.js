@@ -14,6 +14,7 @@ import mlRecommendationEngine from './mlRecommendationEngine.js';
 import youtubeMusicEngine from './youtubeMusicInspiredEngine.js';
 import feedbackLearningEngine from './feedbackLearningEngine.js';
 import { filterPlayableTracks, cleanTrackList, logPlayabilityStats, validateRecommendations } from '../utils/trackPlayability.js';
+import PerformanceMonitor from '../utils/performanceMonitor.js';
 
 export class RecommendationOrchestrator {
   constructor() {
@@ -45,8 +46,18 @@ export class RecommendationOrchestrator {
 
   /**
    * Generate recommendations using the best strategy (multi-armed bandit)
+   *
+   * @param {Object} spotifyService - Spotify API service instance
+   * @param {Object} options - Configuration options
+   * @param {boolean} [options.useMultiArmedBandit=true] - Use multi-armed bandit for strategy selection
+   * @param {boolean} [options.fallbackToAll=true] - Fallback to blended strategy if primary fails
+   * @param {number} [options.limit=50] - Maximum number of recommendations
+   * @returns {Promise<Object>} Recommendation result with tracks, strategy, and metadata
    */
   async generateRecommendations(spotifyService, options = {}) {
+    // Measure total recommendation generation time
+    PerformanceMonitor.start('recommendation-total')
+
     await this.initialize();
 
     const {
@@ -56,16 +67,22 @@ export class RecommendationOrchestrator {
     } = options;
 
     // Fetch user data
-    const userData = await this.fetchUserData(spotifyService);
+    PerformanceMonitor.start('fetch-user-data')
+    const userData = await this.fetchUserData(spotifyService)
+    PerformanceMonitor.end('fetch-user-data')
 
     if (useMultiArmedBandit) {
       // Use multi-armed bandit to select best strategy
+      PerformanceMonitor.start('multi-armed-bandit-selection')
       const result = await youtubeMusicEngine.multiArmedBandit(
         this.strategies,
         { ...userData, ...options }
       );
+      PerformanceMonitor.end('multi-armed-bandit-selection')
 
       console.log(`🎯 Selected strategy: ${result.strategy} (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
+
+      const totalDuration = PerformanceMonitor.end('recommendation-total')
 
       return {
         tracks: result.recommendations.slice(0, limit),
@@ -73,21 +90,28 @@ export class RecommendationOrchestrator {
         confidence: result.confidence,
         metadata: {
           context: youtubeMusicEngine.getCurrentContext(),
-          userData
+          userData,
+          performanceMs: totalDuration
         }
       };
     }
 
     if (fallbackToAll) {
       // Use all strategies and merge results
-      return this.generateBlendedRecommendations(spotifyService, userData, options);
+      const blended = await this.generateBlendedRecommendations(spotifyService, userData, options);
+      const totalDuration = PerformanceMonitor.end('recommendation-total')
+      blended.metadata = { ...blended.metadata, performanceMs: totalDuration }
+      return blended;
     }
 
     // Default: use Spotify API strategy
+    const tracks = await this.getSpotifyAPIRecommendations({ ...userData, ...options })
+    const totalDuration = PerformanceMonitor.end('recommendation-total')
+
     return {
-      tracks: await this.getSpotifyAPIRecommendations({ ...userData, ...options }),
+      tracks,
       strategy: 'spotify-api',
-      metadata: { userData }
+      metadata: { userData, performanceMs: totalDuration }
     };
   }
 
